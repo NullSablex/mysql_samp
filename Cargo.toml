@@ -1,0 +1,16 @@
+[package]
+name = "mysql_samp"
+version = "0.1.0"
+edition = "2024"
+authors = ["NullSablex"]
+repository = "https://github.com/NullSablex/mysql_samp"
+license = "GPL-3.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+samp = { git = "https://github.com/ZOTTCE/samp-rs", rev = "17ecb2f722bf0d74a98eb782745cd77e41c3c60a" }
+mysql = { version = "27.0.0", default-features = false, features = ["default-rust"] }
+chrono = "0.4"
+log = "0.4"
