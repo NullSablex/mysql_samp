@@ -10,7 +10,7 @@ license = "GPL-3.0"
 crate-type = ["cdylib"]
 
 [dependencies]
-samp = { git = "https://github.com/ZOTTCE/samp-rs", rev = "17ecb2f722bf0d74a98eb782745cd77e41c3c60a" }
+samp = { git = "https://github.com/NullSablex/rust-samp", rev = "e725e7f2a652ab9ac91a97d9fd2e1d01afe04549" }
 mysql = { version = "27.0.0", default-features = false, features = ["default-rust"] }
 chrono = "0.4"
 log = "0.4"
