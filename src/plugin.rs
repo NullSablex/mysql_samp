@@ -78,10 +78,10 @@ impl MysqlPlugin {
             self.cache.push_active(result.cache);
 
             // Invoke callback if specified
-            if let Some(ref info) = result.callback {
-                if !info.name.is_empty() {
-                    callback::invoke_callback(&self.amx_list, info);
-                }
+            if let Some(ref info) = result.callback
+                && !info.name.is_empty()
+            {
+                callback::invoke_callback(&self.amx_list, info);
             }
 
             // Pop cache after callback returns

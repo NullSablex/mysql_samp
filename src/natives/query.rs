@@ -100,6 +100,7 @@ impl MysqlPlugin {
     }
 
     /// Internal: submits a query (ordered or parallel).
+    #[allow(clippy::too_many_arguments)]
     fn submit_query(
         &mut self,
         conn_id: i32,

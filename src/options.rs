@@ -126,10 +126,10 @@ mod tests {
     fn default_options() {
         let opts = MysqlOptions::default();
         assert_eq!(opts.port, 3306);
-        assert_eq!(opts.ssl, false);
+        assert!(!opts.ssl);
         assert!(opts.ssl_ca.is_none());
         assert!(opts.connect_timeout.is_none());
-        assert_eq!(opts.auto_reconnect, true);
+        assert!(opts.auto_reconnect);
     }
 
     // OptionsManager tests
@@ -170,10 +170,10 @@ mod tests {
         let mut mgr = OptionsManager::new();
         let id = mgr.create();
         assert!(mgr.set_int(id, MysqlOptionKind::Ssl, 1));
-        assert_eq!(mgr.get(id).unwrap().ssl, true);
+        assert!(mgr.get(id).unwrap().ssl);
 
         assert!(mgr.set_int(id, MysqlOptionKind::Ssl, 0));
-        assert_eq!(mgr.get(id).unwrap().ssl, false);
+        assert!(!mgr.get(id).unwrap().ssl);
     }
 
     #[test]
@@ -189,9 +189,9 @@ mod tests {
         let mut mgr = OptionsManager::new();
         let id = mgr.create();
         assert!(mgr.set_int(id, MysqlOptionKind::AutoReconnect, 0));
-        assert_eq!(mgr.get(id).unwrap().auto_reconnect, false);
+        assert!(!mgr.get(id).unwrap().auto_reconnect);
         assert!(mgr.set_int(id, MysqlOptionKind::AutoReconnect, 1));
-        assert_eq!(mgr.get(id).unwrap().auto_reconnect, true);
+        assert!(mgr.get(id).unwrap().auto_reconnect);
     }
 
     #[test]

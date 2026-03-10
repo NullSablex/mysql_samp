@@ -267,7 +267,7 @@ impl OrmInstance {
                 }
                 OrmVarBinding::String { amx_addr, max_len, .. } => {
                     // Clamp max_len to a safe upper bound to prevent OOB writes
-                    let safe_max = (*max_len).max(0).min(4096) as usize;
+                    let safe_max = (*max_len).clamp(0, 4096) as usize;
                     if safe_max == 0 {
                         continue;
                     }
@@ -276,8 +276,8 @@ impl OrmInstance {
                         let max = safe_max.saturating_sub(1);
                         let bytes = value.as_bytes();
                         let write_len = bytes.len().min(max);
-                        for i in 0..write_len {
-                            unsafe { *ptr.add(i) = bytes[i] as i32 };
+                        for (i, &byte) in bytes.iter().enumerate().take(write_len) {
+                            unsafe { *ptr.add(i) = byte as i32 };
                         }
                         unsafe { *ptr.add(write_len) = 0 }; // null terminator
                     }
@@ -336,7 +336,7 @@ mod tests {
     use super::*;
 
     fn dummy_ident() -> AmxIdent {
-        AmxIdent::from(1usize as *mut samp::raw::types::AMX)
+        AmxIdent::from(std::ptr::dangling_mut::<samp::raw::types::AMX>())
     }
 
     fn dummy_ident_2() -> AmxIdent {

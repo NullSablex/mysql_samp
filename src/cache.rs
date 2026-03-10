@@ -21,6 +21,7 @@ pub struct CacheEntry {
 }
 
 impl CacheEntry {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         rows: Vec<CacheRow>,
         field_names: Vec<String>,
