@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  release:
+    types: [published, prereleased]
+
+env:
+  CARGO_TERM_COLOR: always
+  PLUGIN_NAME: mysql_samp
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: i686-unknown-linux-gnu,i686-pc-windows-gnu
+
+      - name: Install cross-compilation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib g++-multilib mingw-w64
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build Linux (i686)
+        run: cargo build --release --target i686-unknown-linux-gnu
+
+      - name: Build Windows (i686)
+        run: cargo build --release --target i686-pc-windows-gnu
+
+      - name: Package release assets
+        run: |
+          VERSION="${{ github.ref_name }}"
+          LINUX_SO="target/i686-unknown-linux-gnu/release/lib${PLUGIN_NAME}.so"
+          WINDOWS_DLL="target/i686-pc-windows-gnu/release/${PLUGIN_NAME}.dll"
+
+          # SA:MP Linux — apenas plugins/
+          mkdir -p pkg/samp-linux/plugins
+          cp "$LINUX_SO" "pkg/samp-linux/plugins/${PLUGIN_NAME}.so"
+
+          # SA:MP Windows — plugins/ + pawno/include/
+          mkdir -p pkg/samp-windows/plugins pkg/samp-windows/pawno/include
+          cp "$WINDOWS_DLL" "pkg/samp-windows/plugins/${PLUGIN_NAME}.dll"
+          cp "include/${PLUGIN_NAME}.inc" "pkg/samp-windows/pawno/include/"
+
+          # OMP Linux — plugins/ + qawno/include/
+          mkdir -p pkg/omp-linux/plugins pkg/omp-linux/qawno/include
+          cp "$LINUX_SO" "pkg/omp-linux/plugins/${PLUGIN_NAME}.so"
+          cp "include/${PLUGIN_NAME}.inc" "pkg/omp-linux/qawno/include/"
+
+          # OMP Windows — plugins/ + qawno/include/
+          mkdir -p pkg/omp-windows/plugins pkg/omp-windows/qawno/include
+          cp "$WINDOWS_DLL" "pkg/omp-windows/plugins/${PLUGIN_NAME}.dll"
+          cp "include/${PLUGIN_NAME}.inc" "pkg/omp-windows/qawno/include/"
+
+          # Compactar
+          cd pkg
+          zip -r "../${PLUGIN_NAME}-${VERSION}-linux-samp.zip"   samp-linux/
+          zip -r "../${PLUGIN_NAME}-${VERSION}-windows-samp.zip" samp-windows/
+          zip -r "../${PLUGIN_NAME}-${VERSION}-linux-omp.zip"    omp-linux/
+          zip -r "../${PLUGIN_NAME}-${VERSION}-windows-omp.zip"  omp-windows/
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.PLUGIN_NAME }}-${{ github.ref_name }}-linux-samp.zip
+            ${{ env.PLUGIN_NAME }}-${{ github.ref_name }}-windows-samp.zip
+            ${{ env.PLUGIN_NAME }}-${{ github.ref_name }}-linux-omp.zip
+            ${{ env.PLUGIN_NAME }}-${{ github.ref_name }}-windows-omp.zip
