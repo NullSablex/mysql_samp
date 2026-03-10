@@ -1,0 +1,67 @@
+site_name: mysql_samp
+site_description: Plugin MySQL para SA:MP escrito em Rust
+site_url: https://nullsablex.github.io/mysql_samp
+repo_url: https://github.com/NullSablex/mysql_samp
+repo_name: NullSablex/mysql_samp
+edit_uri: edit/master/docs/
+
+theme:
+  name: material
+  language: pt
+  palette:
+    - scheme: default
+      primary: deep orange
+      accent: orange
+      toggle:
+        icon: material/brightness-7
+        name: Modo escuro
+    - scheme: slate
+      primary: deep orange
+      accent: orange
+      toggle:
+        icon: material/brightness-4
+        name: Modo claro
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.action.edit
+
+plugins:
+  - search:
+      lang: pt
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Início: index.md
+  - Guia:
+      - Instalação: instalacao.md
+      - Conexão: conexao.md
+      - Queries: queries.md
+      - Cache: cache.md
+      - ORM: orm.md
+      - Options: options.md
+      - Segurança: seguranca.md
+      - Erros: erros.md
+  - Migração:
+      - Guia de Migração: migracao.md
+      - O que Mudou: mudancas.md
+      - Exemplos: exemplos-migracao.md
+  - Referência:
+      - API Completa: api.md
+      - Benchmark: benchmark.md
