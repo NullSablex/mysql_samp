@@ -1,9 +1,13 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 const LOG_DIR: &str = "logs";
 const LOG_FILE: &str = "logs/mysql.log";
 const PREFIX: &str = "[MySQL]";
+
+/// Log level: 0=none, 1=error, 2=warning, 3=info, 4=all (default)
+static LOG_LEVEL: AtomicI32 = AtomicI32::new(4);
 
 pub struct Logger;
 
@@ -13,22 +17,36 @@ impl Logger {
         Self::print_banner();
     }
 
+    pub fn set_log_level(level: i32) {
+        LOG_LEVEL.store(level.clamp(0, 4), Ordering::Relaxed);
+    }
+
     pub fn info(msg: &str) {
-        log::info!("{} {}", PREFIX, msg);
+        if LOG_LEVEL.load(Ordering::Relaxed) >= 3 {
+            log::info!("{} {}", PREFIX, msg);
+            Self::write_file("INFO", msg);
+        }
     }
 
     pub fn warn(msg: &str) {
-        log::warn!("{} {}", PREFIX, msg);
+        if LOG_LEVEL.load(Ordering::Relaxed) >= 2 {
+            log::warn!("{} {}", PREFIX, msg);
+            Self::write_file("WARNING", msg);
+        }
     }
 
     pub fn error(msg: &str) {
-        log::error!("{} {}", PREFIX, msg);
-        Self::write_file("ERROR", msg);
+        if LOG_LEVEL.load(Ordering::Relaxed) >= 1 {
+            log::error!("{} {}", PREFIX, msg);
+            Self::write_file("ERROR", msg);
+        }
     }
 
     pub fn error_detail(console_msg: &str, detail: &str) {
-        log::error!("{} {}", PREFIX, console_msg);
-        Self::write_file("ERROR", detail);
+        if LOG_LEVEL.load(Ordering::Relaxed) >= 1 {
+            log::error!("{} {}", PREFIX, console_msg);
+            Self::write_file("ERROR", detail);
+        }
     }
 
     fn print_banner() {

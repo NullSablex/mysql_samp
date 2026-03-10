@@ -104,9 +104,9 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "chrono"
-version = "0.4.43"
+version = "0.4.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fac4744fb15ae8337dc853fee7fb3f4e48c0fbaa23d0afe49c447b4fab126118"
+checksum = "c673075a2e0e5f4a1dde27ce9dee1ea4558c7ffe648f576438a20ca1d2acc4b0"
 dependencies = [
  "iana-time-zone",
  "js-sys",
@@ -588,7 +588,7 @@ dependencies = [
 
 [[package]]
 name = "mysql_samp"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "log",
@@ -756,18 +756,19 @@ checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 
 [[package]]
 name = "samp"
-version = "1.0.0"
-source = "git+https://github.com/NullSablex/rust-samp?rev=e725e7f2a652ab9ac91a97d9fd2e1d01afe04549#e725e7f2a652ab9ac91a97d9fd2e1d01afe04549"
+version = "2.1.0"
+source = "git+https://github.com/NullSablex/rust-samp?rev=2f04c37d5383fde4e255a184aa90ec1ee829f8ed#2f04c37d5383fde4e255a184aa90ec1ee829f8ed"
 dependencies = [
  "fern",
+ "log",
  "samp-codegen",
  "samp-sdk",
 ]
 
 [[package]]
 name = "samp-codegen"
-version = "1.0.0"
-source = "git+https://github.com/NullSablex/rust-samp?rev=e725e7f2a652ab9ac91a97d9fd2e1d01afe04549#e725e7f2a652ab9ac91a97d9fd2e1d01afe04549"
+version = "1.1.0"
+source = "git+https://github.com/NullSablex/rust-samp?rev=2f04c37d5383fde4e255a184aa90ec1ee829f8ed#2f04c37d5383fde4e255a184aa90ec1ee829f8ed"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -776,8 +777,8 @@ dependencies = [
 
 [[package]]
 name = "samp-sdk"
-version = "1.0.0"
-source = "git+https://github.com/NullSablex/rust-samp?rev=e725e7f2a652ab9ac91a97d9fd2e1d01afe04549#e725e7f2a652ab9ac91a97d9fd2e1d01afe04549"
+version = "2.1.0"
+source = "git+https://github.com/NullSablex/rust-samp?rev=2f04c37d5383fde4e255a184aa90ec1ee829f8ed#2f04c37d5383fde4e255a184aa90ec1ee829f8ed"
 dependencies = [
  "bitflags",
 ]
