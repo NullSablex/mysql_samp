@@ -6,41 +6,12 @@ Plugin MySQL para SA:MP e open.mp escrito em Rust. Zero dependências externas, 
 
 ## Por onde começar?
 
-<div class="grid cards" markdown>
-
--   :material-download: **Novo por aqui**
-
-    ---
-
-    Instale o plugin e configure sua primeira conexão.
-
-    [Instalação](instalacao.md) · [Conexão](conexao.md)
-
--   :material-swap-horizontal: **Migrando do R41-4**
-
-    ---
-
-    Veja o que mudou e adapte seu código existente.
-
-    [Guia de migração](migracao.md) · [O que mudou](mudancas.md)
-
--   :material-book-open-variant: **Referência**
-
-    ---
-
-    Tabela completa de natives, forwards e enums.
-
-    [API completa](api.md)
-
--   :material-speedometer: **Benchmark**
-
-    ---
-
-    Resultados de desempenho em cenários reais.
-
-    [Ver benchmark](benchmark.md)
-
-</div>
+| | |
+|---|---|
+| **Novo por aqui** | [Instalação](instalacao.md) → [Conexão](conexao.md) → [Queries](queries.md) |
+| **Migrando do R41-4** | [Guia de migração](migracao.md) → [O que mudou](mudancas.md) → [Exemplos](exemplos-migracao.md) |
+| **Referência rápida** | [API completa](api.md) |
+| **Desempenho** | [Benchmark](benchmark.md) |
 
 ---
 
