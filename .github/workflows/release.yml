@@ -4,6 +4,9 @@ on:
   release:
     types: [published, prereleased]
 
+permissions:
+  contents: write
+
 env:
   CARGO_TERM_COLOR: always
   PLUGIN_NAME: mysql_samp
