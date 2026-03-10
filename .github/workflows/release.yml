@@ -46,9 +46,10 @@ jobs:
           LINUX_SO="target/i686-unknown-linux-gnu/release/lib${PLUGIN_NAME}.so"
           WINDOWS_DLL="target/i686-pc-windows-gnu/release/${PLUGIN_NAME}.dll"
 
-          # SA:MP Linux — apenas plugins/
-          mkdir -p pkg/samp-linux/plugins
+          # SA:MP Linux — plugins/ + include/
+          mkdir -p pkg/samp-linux/plugins pkg/samp-linux/include
           cp "$LINUX_SO" "pkg/samp-linux/plugins/${PLUGIN_NAME}.so"
+          cp "include/${PLUGIN_NAME}.inc" "pkg/samp-linux/include/"
 
           # SA:MP Windows — plugins/ + pawno/include/
           mkdir -p pkg/samp-windows/plugins pkg/samp-windows/pawno/include
