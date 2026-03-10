@@ -4,6 +4,7 @@
 
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 ![SA:MP](https://img.shields.io/badge/SA:MP-0.3.7+-orange)
+![open.mp](https://img.shields.io/badge/open.mp-compatível-orange)
 ![Build](https://img.shields.io/badge/build-Linux%20%7C%20Windows-green)
 ![Architecture](https://img.shields.io/badge/arch-x86%20(32--bit)-lightgrey)
 [![Release](https://img.shields.io/github/v/release/NullSablex/MySQL-SAMP?label=download)](https://github.com/NullSablex/mysql_samp/releases/latest)
@@ -13,15 +14,17 @@
 
 ## Visão geral
 
-**mysql_samp** é um plugin MySQL moderno para SA:MP (San Andreas Multiplayer) construído inteiramente em Rust. Fornece uma API limpa e minimalista para conectividade com banco de dados, sem nenhuma dependência externa em runtime.
+**mysql_samp** é um plugin MySQL moderno para SA:MP (San Andreas Multiplayer) e [open.mp](https://open.mp) construído inteiramente em Rust. Fornece uma API completa para conectividade com banco de dados, queries non-blocking, sistema de cache e ORM, sem nenhuma dependência externa em runtime.
 
 ### Destaques
 
 - **Zero dependências externas** — sem `libmysqlclient`, sem OpenSSL. O protocolo MySQL e o TLS (via rustls) são compilados diretamente no binário.
+- **Todas as queries são non-blocking** — `mysql_query` executa em threads separadas com ordenação FIFO. Nunca trava o servidor.
+- **Pool de conexões** — reutilização automática de conexões via `mysql::Pool`, com thread safety nativa.
+- **ORM integrado** — mapeamento de variáveis Pawn para colunas do banco com operações CRUD automáticas.
+- **Sistema de cache** — acesso aos resultados via stack automático ou persistência manual com `cache_save`.
+- **Seguro por padrão** — escape automático de strings, UTF-8 forçado, proteção contra SQL injection e memory exhaustion.
 - **Deploy simples** — copie o `.so` ou `.dll` e funciona. Sem bibliotecas extras para instalar.
-- **Suporte a Unix socket** — conecte via TCP ou socket Unix passando o caminho do socket como host.
-- **Seguro por padrão** — o console exibe apenas mensagens genéricas; detalhes sensíveis de erro vão exclusivamente para `logs/mysql.log`.
-- **Configuração opcional** — funciona com valores padrão sensíveis (porta 3306). Use a API de options apenas quando precisar de configurações personalizadas.
 
 ## Instalação
 
@@ -29,8 +32,10 @@
    - `mysql_samp.so` (Linux)
    - `mysql_samp.dll` (Windows)
 2. Coloque o arquivo no diretório `plugins/` do seu servidor.
-3. Copie `include/mysql_samp.inc` para o diretório `pawno/include/`.
-4. Adicione ao `server.cfg`:
+3. Copie `mysql_samp.inc` para a pasta de includes do compilador:
+   - **Windows:** `pawno/include/` ou `qawno/include/`
+   - **Linux:** `include/` (na raiz do servidor)
+4. Adicione ao `server.cfg` (ou `config.json` no open.mp):
    ```
    plugins mysql_samp.so
    ```
@@ -57,7 +62,21 @@ public OnGameModeInit() {
         return 1;
     }
 
+    // Query non-blocking com callback
+    mysql_query(gMysql, "SELECT * FROM players LIMIT 10", "OnPlayersLoaded");
     return 1;
+}
+
+forward OnPlayersLoaded();
+public OnPlayersLoaded() {
+    new rows = cache_get_row_count();
+    printf("Jogadores encontrados: %d", rows);
+
+    new name[MAX_PLAYER_NAME];
+    for (new i = 0; i < rows; i++) {
+        cache_get_value_name(i, "name", name);
+        printf("  - %s", name);
+    }
 }
 
 public OnGameModeExit() {
@@ -66,48 +85,28 @@ public OnGameModeExit() {
 }
 ```
 
-## Referência da API
+## Documentacao
 
-### Conexão
+A documentacao completa do plugin esta em [docs/](docs/):
 
-| Native | Descrição |
+| Documento | Conteudo |
 |---|---|
-| `mysql_connect(host[], user[], pass[], db[], options = 0)` | Conecta ao servidor MySQL. Retorna ID da conexão ou `0` em caso de falha. |
-| `mysql_close(connId)` | Fecha uma conexão existente. |
-| `mysql_status(connId, dest[], max_len)` | Obtém métricas de status do servidor. |
+| [Instalacao e configuracao](docs/instalacao.md) | Setup, server.cfg, requisitos |
+| [Conexao](docs/conexao.md) | mysql_connect, mysql_close, options, charset, SSL |
+| [Queries](docs/queries.md) | mysql_query, mysql_pquery, mysql_format, mysql_escape_string |
+| [Cache](docs/cache.md) | Todas as funcoes cache_*, save/restore, ciclo de vida |
+| [ORM](docs/orm.md) | Mapeamento objeto-relacional, CRUD, bindings |
+| [Tratamento de erros](docs/erros.md) | mysql_errno, mysql_error, OnQueryError, codigos |
+| [Referencia da API](docs/api.md) | Tabela completa de todas as natives e forwards |
+| [Seguranca](docs/seguranca.md) | Escape, UTF-8, limites, boas praticas |
+| [Migracao do R41-4](docs/migracao.md) | Diferencas e como migrar do mysql R41-4 |
 
-### Options
-
-Options são **totalmente opcionais**. Use apenas quando precisar de configurações diferentes do padrão.
-
-| Native | Descrição |
-|---|---|
-| `mysql_options_new()` | Cria um handle de options com valores padrão. |
-| `mysql_options_set_int(handle, option, value)` | Define uma opção numérica. |
-| `mysql_options_set_str(handle, option, value[])` | Define uma opção de texto. |
-
-| Opção | Tipo | Descrição |
-|---|---|---|
-| `MYSQL_OPT_PORT` | int | Porta TCP (padrão: 3306) |
-| `MYSQL_OPT_SSL` | int | Ativar SSL (`true` / `false`) |
-| `MYSQL_OPT_SSL_CA` | string | Caminho do certificado CA |
-| `MYSQL_OPT_CONNECT_TIMEOUT` | int | Timeout de conexão em segundos |
-
-### Tratamento de erros
-
-| Native | Descrição |
-|---|---|
-| `mysql_errno(connId = 0)` | Retorna o código do último erro. `0` = sem erro. |
-
-> [!NOTE]
-> Detalhes dos erros são registrados em `logs/mysql.log` com timestamp. O console do servidor exibe apenas mensagens genéricas com códigos de erro por segurança.
-
-## Compilando o código-fonte
+## Compilando o codigo-fonte
 
 ### Requisitos
 
 - Toolchain Rust com targets: `i686-unknown-linux-gnu`, `i686-pc-windows-gnu`
-- Nenhuma biblioteca do sistema necessária (build 100% Rust)
+- Nenhuma biblioteca do sistema necessaria (build 100% Rust)
 
 ### Build de desenvolvimento
 
@@ -121,13 +120,13 @@ cargo build
 bash scripts/build.sh
 ```
 
-Os arquivos são gerados em `dist/` com checksums SHA-256.
+Os arquivos sao gerados em `dist/` com checksums SHA-256.
 
 > [!CAUTION]
-> Este plugin é distribuído sob a GPL v3. Qualquer trabalho derivado deve manter o código-fonte aberto sob a mesma licença.
+> Este plugin e distribuido sob a GPL v3. Qualquer trabalho derivado deve manter o codigo-fonte aberto sob a mesma licenca.
 
-## Licença
+## Licenca
 
 Copyright (c) 2026 NullSablex
 
-Este projeto está licenciado sob a [GNU General Public License v3.0](LICENSE).
+Este projeto esta licenciado sob a [GNU General Public License v3.0](LICENSE).
