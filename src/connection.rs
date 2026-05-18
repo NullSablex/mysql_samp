@@ -1,8 +1,9 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use mysql::prelude::Queryable;
-use mysql::{Opts, OptsBuilder, Pool, PooledConn};
+use mysql::{Opts, OptsBuilder, Pool, PooledConn, SslOpts};
 
 use crate::cache::{CacheEntry, CacheRow};
 use crate::error::{ErrorState, MysqlError};
@@ -64,7 +65,15 @@ impl ConnectionManager {
             builder
         };
 
-        // TODO: SSL configuration when mysql crate exposes rustls options
+        let builder = if options.ssl {
+            let mut ssl_opts = SslOpts::default();
+            if let Some(ca) = options.ssl_ca.as_deref() {
+                ssl_opts = ssl_opts.with_root_cert_path(Some(PathBuf::from(ca)));
+            }
+            builder.ssl_opts(Some(ssl_opts))
+        } else {
+            builder
+        };
 
         // Force UTF-8 encoding on every connection for safe string escaping
         let builder = builder.init(vec!["SET NAMES utf8mb4"]);
