@@ -5,9 +5,8 @@ use crate::plugin::MysqlPlugin;
 
 impl MysqlPlugin {
     #[native(name = "mysql_errno")]
-    pub fn mysql_errno(&mut self, _amx: &Amx, conn_id: i32) -> AmxResult<i32> {
-        let error = self.connections.get_error(conn_id);
-        Ok(error.code.code())
+    pub fn mysql_errno(&mut self, _amx: &Amx, conn_id: i32) -> i32 {
+        self.connections.get_error(conn_id).code.code()
     }
 
     #[native(name = "mysql_error")]
@@ -20,8 +19,7 @@ impl MysqlPlugin {
     ) -> AmxResult<bool> {
         let error = self.connections.get_error(conn_id);
         let msg = error.message.clone();
-        let mut buf = dest.into_sized_buffer(dest_len);
-        let _ = samp::cell::string::put_in_buffer(&mut buf, &msg);
+        dest.write_str(dest_len, &msg)?;
         Ok(true)
     }
 }

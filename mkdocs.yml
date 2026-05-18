@@ -1,69 +1,103 @@
 site_name: mysql_samp
-site_description: Plugin MySQL para SA:MP escrito em Rust
-site_url: https://nullsablex.github.io/mysql_samp
-repo_url: https://github.com/NullSablex/mysql_samp
+site_description: MySQL plugin for SA-MP and Open Multiplayer, written in Rust
+site_author: NullSablex
+site_url: https://mysql-samp.nullsablex.com/
+
 repo_name: NullSablex/mysql_samp
+repo_url: https://github.com/NullSablex/mysql_samp
 edit_uri: edit/master/docs/
+
+docs_dir: docs
 
 theme:
   name: material
-  language: pt
-  palette:
-    - scheme: default
-      primary: deep orange
-      accent: orange
-      toggle:
-        icon: material/brightness-7
-        name: Modo escuro
-    - scheme: slate
-      primary: deep orange
-      accent: orange
-      toggle:
-        icon: material/brightness-4
-        name: Modo claro
+  language: en
   features:
     - navigation.tabs
+    - navigation.tabs.sticky
     - navigation.sections
+    - navigation.expand
     - navigation.top
-    - search.highlight
+    - navigation.tracking
+    - navigation.indexes
+    - toc.follow
     - search.suggest
+    - search.highlight
+    - search.share
     - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
     - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep orange
+      accent: orange
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep orange
+      accent: orange
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
 
 plugins:
   - search:
-      lang: pt
+      lang: en
 
 markdown_extensions:
   - admonition
   - attr_list
+  - def_list
+  - footnotes
   - md_in_html
-  - pymdownx.details
-  - pymdownx.superfences
-  - pymdownx.highlight:
-      anchor_linenums: true
-  - pymdownx.inlinehilite
-  - pymdownx.tabbed:
-      alternate_style: true
   - tables
   - toc:
       permalink: true
+      permalink_title: Permanent link
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 nav:
-  - Início: index.md
-  - Guia:
-      - Instalação: instalacao.md
-      - Conexão: conexao.md
+  - Home: index.md
+  - Guide:
+      - Installation: installation.md
+      - Connection: connection.md
+      - Options: options.md
       - Queries: queries.md
       - Cache: cache.md
       - ORM: orm.md
-      - Options: options.md
-      - Segurança: seguranca.md
-      - Erros: erros.md
-  - Migração:
-      - Guia de Migração: migracao.md
-      - O que Mudou: mudancas.md
-      - Exemplos: exemplos-migracao.md
-  - Referência:
-      - API Completa: api.md
+      - Errors: errors.md
+      - Security: security.md
+  - Migration:
+      - Migration guide: migration.md
+      - What changed: migration-changes.md
+      - Examples: migration-examples.md
+  - Reference:
+      - API reference: api-reference.md
       - Benchmark: benchmark.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/NullSablex/mysql_samp

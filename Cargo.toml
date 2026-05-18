@@ -1,8 +1,8 @@
 [package]
 name = "mysql_samp"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
-authors = ["NullSablex"]
+authors = ["NullSablex <https://github.com/NullSablex>"]
 repository = "https://github.com/NullSablex/mysql_samp"
 license = "GPL-3.0"
 
@@ -10,7 +10,9 @@ license = "GPL-3.0"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-samp = { git = "https://github.com/NullSablex/rust-samp", rev = "2f04c37d5383fde4e255a184aa90ec1ee829f8ed" }
-mysql = { version = "27.0.0", default-features = false, features = ["default-rust"] }
-chrono = "0.4.44"
-log = "0.4"
+samp = { git = "https://github.com/NullSablex/rust-samp.git", tag = "v3.0.0" }
+mysql = { version = "28.0.0", default-features = false, features = ["default-rust"] }
+chrono = "0.4"
+
+[package.metadata.samp]
+uid = "0x4e10002241c700f4"

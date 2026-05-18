@@ -5,6 +5,10 @@ use samp::prelude::*;
 
 use crate::connection::{escape_identifier, escape_string};
 
+/// Upper bound on the buffer size accepted by `orm_addvar_string`.
+/// Protects the AMX heap from oversized writes via a hostile `max_len`.
+pub const MAX_ORM_STRING_LEN: i32 = 4096;
+
 /// ORM error codes exposed to Pawn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
@@ -16,9 +20,19 @@ pub enum OrmError {
 /// Represents a bound Pawn variable mapped to a database column.
 #[derive(Debug, Clone)]
 pub enum OrmVarBinding {
-    Int { amx_addr: i32, column: String },
-    Float { amx_addr: i32, column: String },
-    String { amx_addr: i32, max_len: i32, column: String },
+    Int {
+        amx_addr: i32,
+        column: String,
+    },
+    Float {
+        amx_addr: i32,
+        column: String,
+    },
+    String {
+        amx_addr: i32,
+        max_len: i32,
+        column: String,
+    },
 }
 
 impl OrmVarBinding {
@@ -76,14 +90,19 @@ impl OrmInstance {
                 let ptr = r.as_ptr();
                 match amx.strlen(ptr) {
                     Ok(len) => {
-                        let actual_len = len.min(max_len as usize);
+                        let max_len_usize = usize::try_from(max_len).unwrap_or(0);
+                        let actual_len = len.min(max_len_usize);
                         let mut chars = Vec::with_capacity(actual_len);
                         for i in 0..actual_len {
                             let cell = unsafe { *ptr.add(i) };
                             if cell == 0 {
                                 break;
                             }
-                            chars.push(cell as u8 as char);
+                            // AMX cells holding char data fit in 0..=255 by
+                            // construction; anything outside that range is
+                            // truncated to the low byte (matches AMX behavior).
+                            let byte = u8::try_from(cell & 0xFF).unwrap_or(0);
+                            chars.push(char::from(byte));
                         }
                         chars.into_iter().collect()
                     }
@@ -103,7 +122,9 @@ impl OrmInstance {
             OrmVarBinding::Float { amx_addr, .. } => {
                 format!("{}", self.read_float(amx, *amx_addr))
             }
-            OrmVarBinding::String { amx_addr, max_len, .. } => {
+            OrmVarBinding::String {
+                amx_addr, max_len, ..
+            } => {
                 let raw = self.read_string(amx, *amx_addr, *max_len);
                 format!("'{}'", escape_string(&raw))
             }
@@ -230,19 +251,14 @@ impl OrmInstance {
         match var {
             OrmVarBinding::Int { amx_addr, .. } => self.read_int(amx, *amx_addr) == 0,
             OrmVarBinding::Float { amx_addr, .. } => self.read_float(amx, *amx_addr) == 0.0,
-            OrmVarBinding::String { amx_addr, max_len, .. } => {
-                self.read_string(amx, *amx_addr, *max_len).is_empty()
-            }
+            OrmVarBinding::String {
+                amx_addr, max_len, ..
+            } => self.read_string(amx, *amx_addr, *max_len).is_empty(),
         }
     }
 
     /// Writes cache values into the bound Pawn variables.
-    pub fn apply_cache(
-        &self,
-        amx: &Amx,
-        cache: &crate::cache::CacheEntry,
-        row: usize,
-    ) {
+    pub fn apply_cache(&self, amx: &Amx, cache: &crate::cache::CacheEntry, row: usize) {
         for var in &self.variables {
             let col_idx = match cache.field_index(var.column_name()) {
                 Some(i) => i,
@@ -265,9 +281,14 @@ impl OrmInstance {
                         *r = value.parse::<f32>().unwrap_or(0.0);
                     }
                 }
-                OrmVarBinding::String { amx_addr, max_len, .. } => {
-                    // Clamp max_len to a safe upper bound to prevent OOB writes
-                    let safe_max = (*max_len).clamp(0, 4096) as usize;
+                OrmVarBinding::String {
+                    amx_addr, max_len, ..
+                } => {
+                    // Clamp max_len to a safe upper bound to prevent OOB writes.
+                    // The clamp guarantees the value is in 0..=MAX_ORM_STRING_LEN,
+                    // so the try_from below is infallible.
+                    let safe_max =
+                        usize::try_from((*max_len).clamp(0, MAX_ORM_STRING_LEN)).unwrap_or(0);
                     if safe_max == 0 {
                         continue;
                     }
@@ -277,7 +298,7 @@ impl OrmInstance {
                         let bytes = value.as_bytes();
                         let write_len = bytes.len().min(max);
                         for (i, &byte) in bytes.iter().enumerate().take(write_len) {
-                            unsafe { *ptr.add(i) = byte as i32 };
+                            unsafe { *ptr.add(i) = i32::from(byte) };
                         }
                         unsafe { *ptr.add(write_len) = 0 }; // null terminator
                     }

@@ -11,12 +11,12 @@ impl MysqlPlugin {
     pub fn mysql_connect(
         &mut self,
         _amx: &Amx,
-        host: AmxString,
-        user: AmxString,
-        password: AmxString,
-        database: AmxString,
+        host: &AmxString,
+        user: &AmxString,
+        password: &AmxString,
+        database: &AmxString,
         options_id: i32,
-    ) -> AmxResult<i32> {
+    ) -> i32 {
         let opts = if options_id == 0 {
             MysqlOptions::default()
         } else {
@@ -24,22 +24,16 @@ impl MysqlPlugin {
                 Some(o) => o.clone(),
                 None => {
                     Logger::error("Connection failed: invalid options handle.");
-                    self.connections.global_error = ErrorState::new(
-                        MysqlError::InvalidOptions,
-                        "Invalid options handle.",
-                    );
-                    return Ok(0);
+                    self.connections.global_error =
+                        ErrorState::new(MysqlError::InvalidOptions, "Invalid options handle.");
+                    return 0;
                 }
             }
         };
 
-        let id = self.connections.connect(
-            &host.to_string(),
-            &user.to_string(),
-            &password.to_string(),
-            &database.to_string(),
-            &opts,
-        );
+        let id = self
+            .connections
+            .connect(host, user, password, database, &opts);
 
         if id > 0 {
             Logger::info(&format!("Connection {} established.", id));
@@ -47,7 +41,7 @@ impl MysqlPlugin {
             Logger::info("Connection failed.");
         }
 
-        Ok(id)
+        id
     }
 
     #[native(name = "mysql_status")]
@@ -60,8 +54,7 @@ impl MysqlPlugin {
     ) -> AmxResult<bool> {
         match self.connections.get_status(conn_id) {
             Some(status) => {
-                let mut buf = dest.into_sized_buffer(dest_len);
-                let _ = samp::cell::string::put_in_buffer(&mut buf, &status);
+                dest.write_str(dest_len, &status)?;
                 Ok(true)
             }
             None => {
@@ -76,24 +69,19 @@ impl MysqlPlugin {
     }
 
     #[native(name = "mysql_close")]
-    pub fn mysql_close(&mut self, _amx: &Amx, connection_id: i32) -> AmxResult<bool> {
+    pub fn mysql_close(&mut self, _amx: &Amx, connection_id: i32) -> bool {
         if self.connections.disconnect(connection_id) {
             Logger::info(&format!("Connection {} closed.", connection_id));
-            Ok(true)
+            true
         } else {
             Logger::warn("Connection not found.");
-            Ok(false)
+            false
         }
     }
 
     #[native(name = "mysql_set_charset")]
-    pub fn mysql_set_charset(
-        &mut self,
-        _amx: &Amx,
-        conn_id: i32,
-        charset: AmxString,
-    ) -> AmxResult<bool> {
-        Ok(self.connections.set_charset(conn_id, &charset.to_string()))
+    pub fn mysql_set_charset(&mut self, _amx: &Amx, conn_id: i32, charset: &AmxString) -> bool {
+        self.connections.set_charset(conn_id, charset)
     }
 
     #[native(name = "mysql_get_charset")]
@@ -106,8 +94,7 @@ impl MysqlPlugin {
     ) -> AmxResult<bool> {
         match self.connections.get_charset(conn_id) {
             Some(charset) => {
-                let mut buf = dest.into_sized_buffer(dest_len);
-                let _ = samp::cell::string::put_in_buffer(&mut buf, &charset);
+                dest.write_str(dest_len, &charset)?;
                 Ok(true)
             }
             None => Ok(false),
@@ -115,13 +102,13 @@ impl MysqlPlugin {
     }
 
     #[native(name = "mysql_unprocessed_queries")]
-    pub fn mysql_unprocessed_queries(&mut self, _amx: &Amx) -> AmxResult<i32> {
-        Ok(self.queries.pending_count() as i32)
+    pub fn mysql_unprocessed_queries(&mut self, _amx: &Amx) -> i32 {
+        i32::try_from(self.queries.pending_count()).unwrap_or(i32::MAX)
     }
 
     #[native(name = "mysql_log")]
-    pub fn mysql_log(&mut self, _amx: &Amx, log_level: i32) -> AmxResult<bool> {
+    pub fn mysql_log(&mut self, _amx: &Amx, log_level: i32) -> bool {
         Logger::set_log_level(log_level);
-        Ok(true)
+        true
     }
 }

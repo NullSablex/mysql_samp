@@ -46,24 +46,22 @@ pub fn invoke_callback(amx_list: &[AmxIdent], info: &CallbackInfo) {
                         break;
                     }
                 }
-                ('s', CallbackParam::String(v)) => {
-                    match allocator.allot_string(v) {
-                        Ok(s) => {
-                            if amx.push(s).is_err() {
-                                push_ok = false;
-                                break;
-                            }
-                        }
-                        Err(_) => {
+                ('s', CallbackParam::String(v)) => match allocator.allot_string(v) {
+                    Ok(s) => {
+                        if amx.push(s).is_err() {
                             push_ok = false;
-                            Logger::error(&format!(
-                                "Failed to allocate string for callback '{}'.",
-                                info.name
-                            ));
                             break;
                         }
                     }
-                }
+                    Err(_) => {
+                        push_ok = false;
+                        Logger::error(&format!(
+                            "Failed to allocate string for callback '{}'.",
+                            info.name
+                        ));
+                        break;
+                    }
+                },
                 _ => {}
             }
         }

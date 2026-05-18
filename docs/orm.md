@@ -1,15 +1,19 @@
 # ORM
 
-O ORM (Object-Relational Mapping) mapeia variaveis Pawn para colunas de uma tabela no banco de dados. Com ele voce pode fazer SELECT, INSERT, UPDATE e DELETE sem escrever SQL manualmente.
+The ORM maps Pawn variables to MySQL columns. With it, SELECT / INSERT / UPDATE / DELETE / save are one-liners — the plugin generates the SQL from the bound variables.
 
-## Conceito
+## Concept
 
-1. Crie uma instancia ORM vinculada a uma tabela e conexao
-2. Associe variaveis Pawn as colunas (bindings)
-3. Defina a coluna chave primaria
-4. Execute operacoes CRUD — o SQL e gerado automaticamente
+1. Create an ORM instance attached to a table and a connection.
+2. Bind Pawn variables to columns (`orm_addvar_*`).
+3. Declare the primary key column (`orm_setkey`).
+4. Run CRUD operations — every call reads the current values from the bound variables, generates the SQL, and runs the query through the standard threaded pipeline.
 
-## Criacao e destruicao
+The five threaded CRUD natives (`orm_select`, `orm_update`, `orm_insert`, `orm_delete`, `orm_save`) accept an optional callback with the **same format string convention as `mysql_query`** (`d`/`i`, `f`, `s`).
+
+ORM instances are owned per-AMX. When the AMX that created the instance unloads, the plugin destroys every ORM bound to it automatically — `Plugin::on_amx_unload` calls `OrmManager::destroy_by_amx`. You do not need to clean up on script unload.
+
+## Lifecycle
 
 ### orm_create
 
@@ -17,7 +21,7 @@ O ORM (Object-Relational Mapping) mapeia variaveis Pawn para colunas de uma tabe
 native orm_create(const table[], connId);
 ```
 
-**Retorno:** ID do ORM (>= 1) ou `0` se a conexao for invalida.
+Creates an ORM bound to `table` on `connId`. Returns the ORM id (`>= 1`) or `0` if `connId` does not exist.
 
 ### orm_destroy
 
@@ -25,242 +29,212 @@ native orm_create(const table[], connId);
 native bool:orm_destroy(orm_id);
 ```
 
-```pawn
-new ORM:ormPlayer;
+Returns `true` if the ORM existed and was removed, `false` otherwise.
 
-public OnGameModeInit() {
-    ormPlayer = ORM:orm_create("players", gMysql);
-    // ... configurar bindings ...
+```pawn
+new g_orm;
+
+public OnGameModeInit()
+{
+    g_orm = orm_create("players", g_mysql);
+    // ... bind variables, set key ...
 }
 
-public OnGameModeExit() {
-    orm_destroy(_:ormPlayer);
+public OnGameModeExit()
+{
+    orm_destroy(g_orm);
 }
 ```
 
 ## Variable bindings
 
-Associe variaveis Pawn as colunas do banco:
-
-### orm_addvar_int
-
 ```pawn
 native bool:orm_addvar_int(orm_id, &var, const column_name[]);
-```
-
-### orm_addvar_float
-
-```pawn
 native bool:orm_addvar_float(orm_id, &Float:var, const column_name[]);
-```
-
-### orm_addvar_string
-
-```pawn
 native bool:orm_addvar_string(orm_id, var[], var_max_len, const column_name[]);
-```
-
-> `var_max_len` deve estar entre 1 e 4096. Valores fora deste intervalo sao rejeitados.
-
-### orm_delvar / orm_clear_vars
-
-```pawn
 native bool:orm_delvar(orm_id, const column_name[]);
 native bool:orm_clear_vars(orm_id);
-```
-
-### orm_setkey
-
-Define a coluna de chave primaria (necessaria para SELECT, UPDATE, DELETE).
-
-```pawn
 native bool:orm_setkey(orm_id, const column_name[]);
 ```
 
-### Exemplo completo de setup
+- `orm_addvar_int` / `orm_addvar_float` take Pawn variables **by reference** — the ORM stores the AMX address, not the value, so changes from Pawn are picked up on the next query build.
+- `orm_addvar_string` requires `1 <= var_max_len <= 4096`. Values outside that range are rejected (`false`). The 4096 cap protects the AMX heap against oversized writes when `orm_apply_cache` copies a column into the Pawn buffer.
+- `orm_delvar(column_name)` removes the binding whose column name matches exactly (case-sensitive).
+- `orm_clear_vars(orm_id)` drops every binding.
+- `orm_setkey(column_name)` declares which bound column is the primary key. Required for `orm_select`, `orm_update`, `orm_delete`. `orm_insert` works without a key.
+
+### Setup pattern
 
 ```pawn
-enum PlayerData {
+enum PlayerData
+{
     pId,
     pName[MAX_PLAYER_NAME],
     Float:pScore,
     pLevel
 }
 
-new gPlayerData[MAX_PLAYERS][PlayerData];
-new ORM:gPlayerORM[MAX_PLAYERS];
+new g_player_data[MAX_PLAYERS][PlayerData];
+new g_player_orm[MAX_PLAYERS];
 
-stock SetupPlayerORM(playerid) {
-    new oid = orm_create("players", gMysql);
-    gPlayerORM[playerid] = ORM:oid;
+stock SetupPlayerORM(playerid)
+{
+    new oid = orm_create("players", g_mysql);
+    g_player_orm[playerid] = oid;
 
-    orm_addvar_int(oid, gPlayerData[playerid][pId], "id");
-    orm_addvar_string(oid, gPlayerData[playerid][pName], MAX_PLAYER_NAME, "name");
-    orm_addvar_float(oid, gPlayerData[playerid][pScore], "score");
-    orm_addvar_int(oid, gPlayerData[playerid][pLevel], "level");
+    orm_addvar_int(oid,    g_player_data[playerid][pId],      "id");
+    orm_addvar_string(oid, g_player_data[playerid][pName],    MAX_PLAYER_NAME, "name");
+    orm_addvar_float(oid,  g_player_data[playerid][pScore],   "score");
+    orm_addvar_int(oid,    g_player_data[playerid][pLevel],   "level");
 
     orm_setkey(oid, "id");
 }
 ```
 
-## Operacoes CRUD
+## CRUD operations
 
-Todas as operacoes sao **non-blocking** (usam `mysql_query` internamente).
-
-### orm_select
-
-Executa um SELECT usando o valor atual da chave primaria.
+Every CRUD native shares the same signature:
 
 ```pawn
 native bool:orm_select(orm_id, const callback[] = "", const format[] = "", {Float,_}:...);
+native bool:orm_update(orm_id, const callback[] = "", const format[] = "", {Float,_}:...);
+native bool:orm_insert(orm_id, const callback[] = "", const format[] = "", {Float,_}:...);
+native bool:orm_delete(orm_id, const callback[] = "", const format[] = "", {Float,_}:...);
+native bool:orm_save(orm_id,   const callback[] = "", const format[] = "", {Float,_}:...);
 ```
 
-SQL gerado: `SELECT col1, col2, ... FROM tabela WHERE chave = valor`
+All five route through `mysql_query` (FIFO ordering, non-blocking). Each returns `false` synchronously when:
+
+- `orm_id` is unknown (`MYSQL_ERROR_INVALID_ORM`),
+- the query cannot be built (`MYSQL_ERROR_ORM_KEY_NOT_SET` for select/update/delete, `MYSQL_ERROR_INVALID_ORM` for insert/save),
+- the underlying connection has gone away.
+
+### orm_select
+
+Generated SQL: `SELECT col1, col2, … FROM \`table\` WHERE \`key\` = <current key value>`.
 
 ```pawn
-// Define o ID a buscar
-gPlayerData[playerid][pId] = playerDBId;
-
-// Executa SELECT
-orm_select(_:gPlayerORM[playerid], "OnPlayerDataLoaded", "d", playerid);
+g_player_data[playerid][pId] = db_id;
+orm_select(g_player_orm[playerid], "OnPlayerDataLoaded", "d", playerid);
 
 forward OnPlayerDataLoaded(playerid);
-public OnPlayerDataLoaded(playerid) {
-    // Aplica os dados do cache nas variaveis vinculadas
-    orm_apply_cache(_:gPlayerORM[playerid]);
+public OnPlayerDataLoaded(playerid)
+{
+    // copy cache row 0 into the bound variables
+    orm_apply_cache(g_player_orm[playerid]);
 
-    // Agora gPlayerData[playerid] tem os valores do banco
-    printf("Nome: %s, Level: %d", gPlayerData[playerid][pName], gPlayerData[playerid][pLevel]);
+    if (orm_errno(g_player_orm[playerid]) == ORM_NO_DATA)
+    {
+        printf("no row for player %d", playerid);
+        return;
+    }
+
+    printf("loaded %s (level %d)",
+        g_player_data[playerid][pName],
+        g_player_data[playerid][pLevel]);
 }
 ```
 
 ### orm_insert
 
-Insere um novo registro com os valores atuais das variaveis vinculadas.
+Generated SQL: `INSERT INTO \`table\` (col1, col2, …) VALUES (val1, val2, …)`.
 
 ```pawn
-native bool:orm_insert(orm_id, const callback[] = "", const format[] = "", {Float,_}:...);
-```
+g_player_data[playerid][pName]  = "NewPlayer";
+g_player_data[playerid][pLevel] = 1;
+g_player_data[playerid][pScore] = 0.0;
 
-SQL gerado: `INSERT INTO tabela (col1, col2, ...) VALUES (val1, val2, ...)`
-
-```pawn
-// Define os dados
-gPlayerData[playerid][pName] = "NovoJogador";
-gPlayerData[playerid][pLevel] = 1;
-gPlayerData[playerid][pScore] = 0.0;
-
-orm_insert(_:gPlayerORM[playerid], "OnPlayerInserted", "d", playerid);
+orm_insert(g_player_orm[playerid], "OnPlayerInserted", "d", playerid);
 
 forward OnPlayerInserted(playerid);
-public OnPlayerInserted(playerid) {
-    // Obtem o ID auto_increment gerado
-    gPlayerData[playerid][pId] = cache_insert_id();
-    printf("Jogador inserido com ID: %d", gPlayerData[playerid][pId]);
+public OnPlayerInserted(playerid)
+{
+    g_player_data[playerid][pId] = cache_insert_id();
+    printf("inserted with id %d", g_player_data[playerid][pId]);
 }
 ```
 
 ### orm_update
 
-Atualiza o registro usando o valor atual da chave primaria.
+Generated SQL: `UPDATE \`table\` SET col1=val1, col2=val2, … WHERE \`key\` = <current key value>`.
 
 ```pawn
-native bool:orm_update(orm_id, const callback[] = "", const format[] = "", {Float,_}:...);
-```
+g_player_data[playerid][pLevel] = 10;
+g_player_data[playerid][pScore] = 1500.0;
 
-SQL gerado: `UPDATE tabela SET col1=val1, col2=val2, ... WHERE chave = valor`
-
-```pawn
-// Modifica os dados
-gPlayerData[playerid][pLevel] = 10;
-gPlayerData[playerid][pScore] = 1500.0;
-
-// Salva no banco
-orm_update(_:gPlayerORM[playerid]);
+orm_update(g_player_orm[playerid]);
 ```
 
 ### orm_delete
 
-Remove o registro usando o valor atual da chave primaria.
+Generated SQL: `DELETE FROM \`table\` WHERE \`key\` = <current key value>`.
 
 ```pawn
-native bool:orm_delete(orm_id, const callback[] = "", const format[] = "", {Float,_}:...);
-```
-
-SQL gerado: `DELETE FROM tabela WHERE chave = valor`
-
-```pawn
-orm_delete(_:gPlayerORM[playerid], "OnPlayerDeleted", "d", playerid);
+orm_delete(g_player_orm[playerid], "OnPlayerDeleted", "d", playerid);
 
 forward OnPlayerDeleted(playerid);
-public OnPlayerDeleted(playerid) {
-    printf("Jogador %d removido do banco", playerid);
+public OnPlayerDeleted(playerid)
+{
+    printf("player %d removed", playerid);
 }
 ```
 
 ### orm_save
 
-Decide automaticamente entre INSERT e UPDATE baseado no valor da chave primaria:
-- Se a chave for `0` (int), `0.0` (float) ou vazia (string) → **INSERT**
-- Caso contrario → **UPDATE**
+Decides between INSERT and UPDATE by looking at the current value of the key column:
+
+- Int key equals `0` → INSERT.
+- Float key equals `0.0` → INSERT.
+- String key is empty (`""`) → INSERT.
+- Anything else → UPDATE.
 
 ```pawn
-native bool:orm_save(orm_id, const callback[] = "", const format[] = "", {Float,_}:...);
-```
-
-```pawn
-// Se pId == 0, faz INSERT. Se pId > 0, faz UPDATE.
-orm_save(_:gPlayerORM[playerid], "OnPlayerSaved", "d", playerid);
+// First save after creation does an INSERT (id is 0), later saves do UPDATE.
+orm_save(g_player_orm[playerid], "OnPlayerSaved", "d", playerid);
 ```
 
 ## orm_apply_cache
-
-Escreve os valores do cache ativo nas variaveis Pawn vinculadas.
 
 ```pawn
 native bool:orm_apply_cache(orm_id, row = 0);
 ```
 
-| Parametro | Tipo | Descricao |
-|---|---|---|
-| `orm_id` | int | ID do ORM |
-| `row` | int | Indice da linha do cache (padrao: 0) |
+Writes one row of the active cache into the bound variables. Must be called from a query callback, while the cache is active. Returns `true` on success.
 
-Deve ser chamado **dentro de um callback de query** (quando o cache esta ativo).
+Failure modes:
+
+| Condition | Return | `orm_errno` |
+|---|---|---|
+| No cache currently active | `false` | unchanged (sets global plugin error to `MYSQL_ERROR_NO_CACHE_ACTIVE`) |
+| `orm_id` is unknown | `false` | unchanged (sets global plugin error to `MYSQL_ERROR_INVALID_ORM`) |
+| `row` is negative or `>= cache_get_row_count()` | `false` | `ORM_NO_DATA` |
+
+When a row index is valid, the plugin walks each binding and copies the matching column into the Pawn variable. Bindings whose column is missing from the cache are silently skipped (the Pawn variable keeps its current value).
 
 ## orm_errno
-
-Retorna o codigo de erro da ultima operacao ORM.
 
 ```pawn
 native orm_errno(orm_id);
 ```
 
-| Codigo | Constante | Descricao |
+Returns the ORM error code for the last operation on the instance, or `-1` if `orm_id` is unknown.
+
+| Code | Constant | Meaning |
 |---|---|---|
-| 0 | `ORM_OK` | Sem erro |
-| 1 | `ORM_NO_DATA` | SELECT nao retornou dados |
+| 0 | `ORM_OK` | The last `orm_apply_cache` succeeded |
+| 1 | `ORM_NO_DATA` | The last `orm_apply_cache` failed because the requested row does not exist |
 
-```pawn
-forward OnPlayerLoaded(playerid);
-public OnPlayerLoaded(playerid) {
-    orm_apply_cache(_:gPlayerORM[playerid]);
+This errno is **only updated by `orm_apply_cache`**. The threaded CRUD natives (`orm_select`/insert/update/delete/save) surface their failures synchronously (return `false`) and through the global `mysql_errno(0)` / `OnQueryError`, not through `orm_errno`.
 
-    if (orm_errno(_:gPlayerORM[playerid]) == ORM_NO_DATA) {
-        // Jogador nao encontrado — criar novo
-        orm_insert(_:gPlayerORM[playerid]);
-    }
-}
-```
+## Generated SQL: safety
 
-## Seguranca
+- String columns are escaped through the same `escape_string` used by `mysql_format %s`.
+- Table and column names are sanitized through `escape_identifier`, which strips backticks. The output is then wrapped in backticks.
+- Numeric columns are formatted directly (`{}` for ints, `{}` for floats — no locale-aware formatting).
 
-- Strings vinculadas sao **escapadas automaticamente** no SQL gerado
-- Nomes de tabela e coluna sao sanitizados via `escape_identifier` (backticks removidos)
-- ORMs sao destruidos automaticamente quando o AMX e descarregado (previne acesso a memoria invalida)
-- `max_len` em `orm_addvar_string` e limitado a 4096 para prevenir escrita fora dos limites
+The result is safe against SQL injection through the bound variables. **Do not** insert hostile column names through `orm_setkey` or `orm_addvar_*`; the plugin removes backticks but does not run a full identifier validator.
 
-## Exemplo completo: sistema de jogadores
+## End-to-end example
 
 ```pawn
 #include <a_samp>
@@ -268,7 +242,8 @@ public OnPlayerLoaded(playerid) {
 
 #define MAX_PLAYER_NAME 24
 
-enum pInfo {
+enum pInfo
+{
     pDBId,
     pName[MAX_PLAYER_NAME],
     pLevel,
@@ -276,68 +251,72 @@ enum pInfo {
 }
 
 new PlayerInfo[MAX_PLAYERS][pInfo];
-new ORM:PlayerORM[MAX_PLAYERS];
-new gMysql;
+new PlayerORM[MAX_PLAYERS];
+new g_mysql;
 
-public OnGameModeInit() {
-    gMysql = mysql_connect("127.0.0.1", "root", "", "samp_server");
-
-    if (mysql_errno()) {
-        printf("MySQL: falha na conexao");
+public OnGameModeInit()
+{
+    g_mysql = mysql_connect("127.0.0.1", "root", "", "samp_server");
+    if (mysql_errno() != MYSQL_OK)
+    {
+        printf("[MySQL] connection failed");
+        return 1;
     }
     return 1;
 }
 
-public OnPlayerConnect(playerid) {
-    // Cria ORM para o jogador
-    new oid = orm_create("players", gMysql);
-    PlayerORM[playerid] = ORM:oid;
+public OnPlayerConnect(playerid)
+{
+    new oid = orm_create("players", g_mysql);
+    PlayerORM[playerid] = oid;
 
-    orm_addvar_int(oid, PlayerInfo[playerid][pDBId], "id");
-    orm_addvar_string(oid, PlayerInfo[playerid][pName], MAX_PLAYER_NAME, "name");
-    orm_addvar_int(oid, PlayerInfo[playerid][pLevel], "level");
-    orm_addvar_float(oid, PlayerInfo[playerid][pMoney], "money");
+    orm_addvar_int(oid,    PlayerInfo[playerid][pDBId],  "id");
+    orm_addvar_string(oid, PlayerInfo[playerid][pName],  MAX_PLAYER_NAME, "name");
+    orm_addvar_int(oid,    PlayerInfo[playerid][pLevel], "level");
+    orm_addvar_float(oid,  PlayerInfo[playerid][pMoney], "money");
     orm_setkey(oid, "id");
 
-    // Busca pelo nome
     GetPlayerName(playerid, PlayerInfo[playerid][pName], MAX_PLAYER_NAME);
 
     new query[128];
-    mysql_format(gMysql, query, sizeof(query),
+    mysql_format(g_mysql, query, sizeof(query),
         "SELECT * FROM players WHERE name = '%s' LIMIT 1",
-        PlayerInfo[playerid][pName]
-    );
-    mysql_query(gMysql, query, "OnPlayerDataLoaded", "d", playerid);
+        PlayerInfo[playerid][pName]);
+    mysql_query(g_mysql, query, "OnPlayerLookup", "d", playerid);
     return 1;
 }
 
-forward OnPlayerDataLoaded(playerid);
-public OnPlayerDataLoaded(playerid) {
-    if (cache_get_row_count() > 0) {
-        orm_apply_cache(_:PlayerORM[playerid]);
-        printf("Jogador %s carregado (ID: %d, Level: %d)",
+forward OnPlayerLookup(playerid);
+public OnPlayerLookup(playerid)
+{
+    if (cache_get_row_count() > 0)
+    {
+        orm_apply_cache(PlayerORM[playerid]);
+        printf("loaded %s (id=%d, level=%d)",
             PlayerInfo[playerid][pName],
             PlayerInfo[playerid][pDBId],
-            PlayerInfo[playerid][pLevel]
-        );
-    } else {
-        // Novo jogador — inserir
+            PlayerInfo[playerid][pLevel]);
+    }
+    else
+    {
+        // brand-new player
         PlayerInfo[playerid][pLevel] = 1;
         PlayerInfo[playerid][pMoney] = 0.0;
-        orm_insert(_:PlayerORM[playerid], "OnPlayerCreated", "d", playerid);
+        orm_insert(PlayerORM[playerid], "OnPlayerCreated", "d", playerid);
     }
 }
 
 forward OnPlayerCreated(playerid);
-public OnPlayerCreated(playerid) {
+public OnPlayerCreated(playerid)
+{
     PlayerInfo[playerid][pDBId] = cache_insert_id();
-    printf("Novo jogador criado com ID: %d", PlayerInfo[playerid][pDBId]);
+    printf("new player saved with id %d", PlayerInfo[playerid][pDBId]);
 }
 
-public OnPlayerDisconnect(playerid, reason) {
-    // Salva dados e destroi ORM
-    orm_save(_:PlayerORM[playerid]);
-    orm_destroy(_:PlayerORM[playerid]);
+public OnPlayerDisconnect(playerid, reason)
+{
+    orm_save(PlayerORM[playerid]);
+    orm_destroy(PlayerORM[playerid]);
     return 1;
 }
 ```

@@ -3,3 +3,8 @@
 CLAUDE.md
 /dist
 /reference
+
+# MkDocs
+/site
+/.venv
+__pycache__/

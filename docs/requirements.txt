@@ -1,0 +1,13 @@
+# Build dependencies for the MkDocs Material documentation site.
+#
+# Pinned with `>=` so the docs workflow picks up patch and minor releases
+# automatically (security fixes, new Material features). For a fully
+# reproducible build, replace with exact `==` pins.
+#
+# Used by `.github/workflows/docs.yml` (which also reads this file as the
+# `actions/setup-python` `cache: pip` key) and by anyone running
+# `mkdocs serve` locally.
+
+mkdocs>=1.6
+mkdocs-material>=9.5
+pymdown-extensions>=10.7

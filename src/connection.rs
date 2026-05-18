@@ -59,7 +59,7 @@ impl ConnectionManager {
         };
 
         let builder = if let Some(timeout) = options.connect_timeout {
-            builder.tcp_connect_timeout(Some(Duration::from_secs(timeout as u64)))
+            builder.tcp_connect_timeout(Some(Duration::from_secs(u64::from(timeout))))
         } else {
             builder
         };
@@ -204,9 +204,7 @@ impl ConnectionManager {
     pub fn get_charset(&self, conn_id: i32) -> Option<String> {
         let entry = self.connections.get(&conn_id)?;
         let mut conn = entry.pool.get_conn().ok()?;
-        let result: Option<String> = conn
-            .query_first("SELECT @@character_set_connection")
-            .ok()?;
+        let result: Option<String> = conn.query_first("SELECT @@character_set_connection").ok()?;
         result
     }
 }
@@ -239,7 +237,11 @@ pub fn escape_string(input: &str) -> String {
 /// Executes a query on a Pool, retrying once on connection-lost errors when auto_reconnect is true.
 /// Connection-lost errors are identified by error code 0 (non-MySQL errors such as IO errors,
 /// which the Rust mysql crate returns when the TCP connection is dropped by the server).
-pub fn attempt_query(pool: &Pool, query: &str, auto_reconnect: bool) -> Result<CacheEntry, QueryError> {
+pub fn attempt_query(
+    pool: &Pool,
+    query: &str,
+    auto_reconnect: bool,
+) -> Result<CacheEntry, QueryError> {
     let mut conn = pool.get_conn().map_err(|e| QueryError {
         code: 0,
         message: e.to_string(),
@@ -276,10 +278,14 @@ pub fn execute_query(conn: &mut PooledConn, query: &str) -> Result<CacheEntry, Q
     };
 
     let cols_ref = result.columns();
-    let columns: Vec<String> = cols_ref.as_ref().iter()
+    let columns: Vec<String> = cols_ref
+        .as_ref()
+        .iter()
         .map(|c| c.name_str().to_string())
         .collect();
-    let field_types: Vec<u8> = cols_ref.as_ref().iter()
+    let field_types: Vec<u8> = cols_ref
+        .as_ref()
+        .iter()
         .map(|c| c.column_type() as u8)
         .collect();
 
@@ -411,6 +417,38 @@ mod tests {
             escape_string("'; DROP TABLE users; --"),
             "\\'; DROP TABLE users; --"
         );
+    }
+
+    #[test]
+    fn escape_consecutive_quotes() {
+        // Three quotes in a row must each be escaped individually.
+        assert_eq!(escape_string("'''"), "\\'\\'\\'");
+    }
+
+    #[test]
+    fn escape_already_escaped_is_double_escaped() {
+        // Important invariant: feeding the function its own output produces
+        // a different (deeper-escaped) string. Callers must escape EXACTLY ONCE.
+        let once = escape_string("a'b");
+        let twice = escape_string(&once);
+        assert_ne!(once, twice);
+        // After two escapes: 'a', '\\', '\\', '\\', '\'', 'b'  → r"a\\\'b" with each char doubled.
+        assert_eq!(twice, "a\\\\\\'b");
+    }
+
+    #[test]
+    fn escape_all_specials_at_once() {
+        // \0 \n \r \\ \' \" \x1a
+        let input = "\0\n\r\\\'\"\x1a";
+        let expected = "\\0\\n\\r\\\\\\'\\\"\\Z";
+        assert_eq!(escape_string(input), expected);
+    }
+
+    #[test]
+    fn escape_low_control_chars_passthrough() {
+        // Only \0 \n \r \x1a are special. Other low-ASCII control bytes
+        // pass through unchanged (no \xNN encoding is done).
+        assert_eq!(escape_string("\x01\x07\x08\x0b"), "\x01\x07\x08\x0b");
     }
 
     // escape_identifier tests

@@ -224,7 +224,11 @@ mod tests {
         CacheEntry::new(
             vec![
                 vec![Some("1".to_string()), Some("Alice".to_string()), None],
-                vec![Some("2".to_string()), Some("Bob".to_string()), Some("bob@test.com".to_string())],
+                vec![
+                    Some("2".to_string()),
+                    Some("Bob".to_string()),
+                    Some("bob@test.com".to_string()),
+                ],
             ],
             vec!["id".to_string(), "name".to_string(), "email".to_string()],
             vec![3, 253, 253], // LONG, VAR_STRING, VAR_STRING
@@ -324,16 +328,7 @@ mod tests {
 
     #[test]
     fn entry_warning_count() {
-        let entry = CacheEntry::new(
-            vec![],
-            vec![],
-            vec![],
-            0,
-            0,
-            3,
-            0,
-            "".to_string(),
-        );
+        let entry = CacheEntry::new(vec![], vec![], vec![], 0, 0, 3, 0, "".to_string());
         assert_eq!(entry.warning_count(), 3);
     }
 
@@ -504,7 +499,10 @@ mod tests {
 
         // Manual active overrides
         mgr.set_active(saved_id);
-        assert_eq!(mgr.get_active().unwrap().query_string(), "SELECT * FROM users");
+        assert_eq!(
+            mgr.get_active().unwrap().query_string(),
+            "SELECT * FROM users"
+        );
 
         // Unset manual returns to stack
         mgr.unset_active();

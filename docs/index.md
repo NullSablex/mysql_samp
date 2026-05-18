@@ -1,51 +1,53 @@
-# Documentação — mysql_samp
+# mysql_samp
 
-Plugin MySQL para SA:MP e open.mp escrito em Rust. Zero dependências externas, queries non-blocking, cache e ORM integrados.
+MySQL plugin for SA-MP and Open Multiplayer, written entirely in Rust. Non-blocking queries with FIFO ordering, a result cache, an ORM, zero external runtime dependencies.
 
----
+The same `.so` / `.dll` runs on SA-MP and on Open Multiplayer — natively as a component (recommended) or via legacy mode. See [Installation](installation.md) for both registration paths.
 
-## Por onde começar?
+## Where to start
 
-| | |
+| Goal | Path |
 |---|---|
-| **Novo por aqui** | [Instalação](instalacao.md) → [Conexão](conexao.md) → [Queries](queries.md) |
-| **Migrando do R41-4** | [Guia de migração](migracao.md) → [O que mudou](mudancas.md) → [Exemplos](exemplos-migracao.md) |
-| **Referência rápida** | [API completa](api.md) |
-| **Desempenho** | [Benchmark](benchmark.md) |
+| First time here | [Installation](installation.md) → [Connection](connection.md) → [Queries](queries.md) |
+| Coming from MySQL R41-4 | [Migration guide](migration.md) → [Migration changes](migration-changes.md) → [Migration examples](migration-examples.md) |
+| Quick lookup | [API reference](api-reference.md) |
+| Performance numbers | [Benchmark](benchmark.md) |
 
----
+## Minimal example
 
-## Exemplo mínimo
-
-Conexão, query assíncrona e leitura do resultado no callback:
+Connect, fire a threaded query, read the result inside the callback:
 
 ```pawn
+#include <a_samp>
 #include <mysql_samp>
 
-new MySQL:g_mysql;
+new g_mysql;
 
 public OnGameModeInit()
 {
-    g_mysql = mysql_connect("127.0.0.1", "root", "senha", "banco");
+    g_mysql = mysql_connect("127.0.0.1", "root", "password", "samp_db");
 
-    // Query FIFO (non-blocking) — executa em thread separada
-    mysql_query(g_mysql, "SELECT id, nome FROM jogadores LIMIT 5", "OnJogadoresCarregados", "");
+    if (mysql_errno() != MYSQL_OK)
+    {
+        printf("[MySQL] connect failed: errno=%d", mysql_errno());
+        return 1;
+    }
+
+    // Non-blocking, FIFO-ordered query. Callback receives playerid via "d" format.
+    mysql_query(g_mysql, "SELECT id, name FROM players LIMIT 5", "OnPlayersLoaded", "d", 0);
     return 1;
 }
 
-forward OnJogadoresCarregados(errorid, error[]);
-public OnJogadoresCarregados(errorid, error[])
+forward OnPlayersLoaded(playerid);
+public OnPlayersLoaded(playerid)
 {
-    if (errorid != 0) {
-        printf("[MySQL] Erro %d: %s", errorid, error);
-        return;
-    }
-
-    while (cache_next_row()) {
-        new id, nome[MAX_PLAYER_NAME];
-        cache_get_value_name_int("id", id);
-        cache_get_value_name("nome", nome);
-        printf("Jogador #%d: %s", id, nome);
+    new rows = cache_get_row_count();
+    for (new i = 0; i < rows; i++)
+    {
+        new id   = cache_get_value_name_int(i, "id");
+        new name[MAX_PLAYER_NAME];
+        cache_get_value_name(i, "name", name);
+        printf("Player #%d: %s", id, name);
     }
 }
 
@@ -56,15 +58,24 @@ public OnGameModeExit()
 }
 ```
 
----
+## Topics
 
-## Tópicos
-
-| Tópico | Descrição |
+| Topic | Contents |
 |---|---|
-| [Queries](queries.md) | `mysql_query`, `mysql_pquery`, `mysql_format`, escape de strings |
-| [Cache](cache.md) | Leitura de resultados, navegação entre linhas, cache salvo |
-| [ORM](orm.md) | Mapeamento de variáveis Pawn para colunas, CRUD automático |
-| [Options](options.md) | Configuração de porta, charset, timeout e outros |
-| [Segurança](seguranca.md) | Proteção contra SQL injection, limites e boas práticas |
-| [Erros](erros.md) | `mysql_errno`, `OnQueryError`, códigos de erro do MySQL |
+| [Installation](installation.md) | Download, register on SA-MP and Open Multiplayer, log files |
+| [Connection](connection.md) | `mysql_connect`, `mysql_close`, `mysql_status`, charset |
+| [Options](options.md) | All `MYSQL_OPT_*` values, defaults, SSL caveat |
+| [Queries](queries.md) | `mysql_query`, `mysql_pquery`, `mysql_format`, `mysql_escape_string` |
+| [Cache](cache.md) | `cache_*` natives, active stack, persistent caches |
+| [ORM](orm.md) | Bind Pawn variables to columns, CRUD without writing SQL |
+| [Errors](errors.md) | `mysql_errno`, `mysql_error`, `OnQueryError`, MySQL error codes |
+| [Security](security.md) | SQL injection, escaping rules, resource limits |
+| [API reference](api-reference.md) | One-line table of every native and forward (55 total) |
+
+## Plugin facts
+
+- **rust-samp**: built on top of [rust-samp v3.0.0](https://github.com/NullSablex/rust-samp).
+- **MySQL crate**: `mysql` 28.0 with the `default-rust` feature (pure-Rust driver, no `libmysqlclient`).
+- **TLS**: rustls is compiled into the binary, but the SSL options (`MYSQL_OPT_SSL`, `MYSQL_OPT_SSL_CA`) are currently **not wired through** to the connection layer — see the caveat in [Options](options.md#ssl).
+- **Tick dispatch**: the unified `on_tick` from rust-samp v3 fires on both SA-MP (via `ProcessTick`) and Open Multiplayer native mode (via `ITimersComponent`). No Pawn timer is required.
+- **Threading**: each `mysql_query` spawns a worker thread that pulls a connection from a `mysql::Pool`; results travel back over an `mpsc` channel and are dispatched on the next tick.
