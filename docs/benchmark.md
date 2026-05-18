@@ -1,197 +1,187 @@
-# Benchmark: mysql_samp vs MySQL R41-4
+# Benchmark — mysql_samp vs MySQL R41-4
 
-Comparação técnica detalhada entre o **mysql_samp** (Rust, v0.2.0) e o **MySQL R41-4** (C++, pBlueG/maddinat0r).
+A technical comparison between **mysql_samp** (Rust) and **MySQL R41-4** (C++, BlueG / maddinat0r). Numbers below are honest — they include the case where R41-4 wins.
 
----
+## How to run the benchmarks
 
-## Como executar os benchmarks
+Ready-made files live under `benchmark/`:
 
-Os arquivos prontos estão em `benchmark/`:
-
-| Arquivo | Descrição |
+| File | What it does |
 |---|---|
-| `benchmark/setup.sql` | Cria as tabelas e insere 100 registros de teste |
-| `benchmark/bench_mysql_samp.pwn` | Gamemode de benchmark para o mysql_samp |
-| `benchmark/bench_r41.pwn` | Gamemode de benchmark para o R41-4 |
+| `benchmark/setup.sql` | Creates the tables and inserts 100 test rows |
+| `benchmark/bench_mysql_samp.pwn` | Benchmark gamemode for mysql_samp |
+| `benchmark/bench_r41.pwn` | Benchmark gamemode for R41-4 |
 
-### Passo a passo
+### Steps
 
-**1. Configure o banco de dados:**
+**1. Prepare the database:**
+
 ```bash
-mysql -u root -p nome_do_banco < benchmark/setup.sql
+mysql -u root -p your_database < benchmark/setup.sql
 ```
 
-**2. Edite as credenciais** em `bench_mysql_samp.pwn` e `bench_r41.pwn`:
+**2. Set the credentials** in `bench_mysql_samp.pwn` and `bench_r41.pwn`:
+
 ```pawn
 #define DB_HOST  "127.0.0.1"
 #define DB_USER  "root"
-#define DB_PASS  "senha"
+#define DB_PASS  "password"
 #define DB_NAME  "benchmark"
 ```
 
-**3. Compile e execute cada GM** separadamente no seu servidor, com o plugin correspondente carregado. O resultado aparece no console.
+**3. Compile and run each gamemode** separately on your server with the corresponding plugin loaded. The result prints to the console.
 
-**4. Compare os números** das 4 etapas entre os dois plugins.
+**4. Compare the four-stage output** between the two plugins.
 
-### O que é medido
+### What is measured
 
-| Etapa | Tipo | Rounds |
+| Stage | Type | Rounds |
 |---|---|---|
-| 1 | SELECT sequencial (FIFO) | 500 queries |
-| 2 | SELECT paralelo | 500 queries |
-| 3 | INSERT paralelo | 200 queries |
-| 4 | `mysql_format` com escape (puro CPU) | 50.000 iterações |
+| 1 | SELECT, sequential (FIFO) | 500 queries |
+| 2 | SELECT, parallel | 500 queries |
+| 3 | INSERT, parallel | 200 queries |
+| 4 | `mysql_format` with escape (pure CPU) | 50 000 iterations |
 
----
+## Results — local MySQL, same machine
 
-## Resultados reais (MySQL local, mesma máquina)
+Environment: SA-MP 0.3.7-R2, MySQL local (loopback — `127.0.0.1`), Linux x86. Both plugins tested on the machine that hosts MySQL, no network latency.
 
-Ambiente: SA-MP 0.3.7-R2, MySQL local (loopback — `127.0.0.1`), Linux x86. Ambos os plugins testados na mesma máquina que hospeda o MySQL, sem latência de rede.
-
-> **Nota sobre conexão remota:** com MySQL em servidor separado (RTT ≥ 1ms), cada query levaria mais de um tick para completar. Isso eliminaria a vantagem do R41-4 nos SELECTs, pois seu despacho via `process_tick` fica limitado a uma query por tick. Os resultados abaixo representam o **melhor cenário possível para o R41-4**.
+> **Note on remote MySQL.** With MySQL on a separate host (RTT ≥ 1 ms), each query takes longer than a server tick. That removes the R41-4 advantage on SELECTs because its `process_tick`-driven dispatch is then bottlenecked to one query per tick. The results below represent the **best-case scenario for R41-4**.
 
 ### R41-4
 
-| Etapa | Total | Média | Throughput |
+| Stage | Total | Average | Throughput |
 |---|---|---|---|
-| SELECT FIFO — `mysql_tquery` (500x)¹ | 93 ms | 0,186 ms/q | 5.376 q/s |
-| SELECT paralelo — `mysql_pquery` (500x) | 51 ms | 0,101 ms/q | 9.804 q/s |
-| INSERT paralelo — `mysql_pquery` (200x) | 607 ms | 3,035 ms/q | 329 q/s |
-| `mysql_format` com escape (50.000x) | 64 ms | 0,0012 ms | 781.250/s |
+| SELECT FIFO — `mysql_tquery` (500x)¹ | 93 ms | 0.186 ms/query | 5 376 q/s |
+| SELECT parallel — `mysql_pquery` (500x) | 51 ms | 0.101 ms/query | 9 804 q/s |
+| INSERT parallel — `mysql_pquery` (200x) | 607 ms | 3.035 ms/query | 329 q/s |
+| `mysql_format` with escape (50 000x) | 64 ms | 0.0012 ms | 781 250 ops/s |
 
 ### mysql_samp
 
-| Etapa | Total | Média | Throughput |
+| Stage | Total | Average | Throughput |
 |---|---|---|---|
-| SELECT FIFO — `mysql_query` (500x)¹ | 155 ms | 0,310 ms/q | 3.226 q/s |
-| SELECT paralelo — `mysql_pquery` (500x) | 94 ms | 0,187 ms/q | 5.319 q/s |
-| INSERT paralelo — `mysql_pquery` (200x) | 45 ms | 0,224 ms/q | 4.444 q/s |
-| `mysql_format` com escape (50.000x) | 135 ms | 0,0027 ms | 370.370/s |
+| SELECT FIFO — `mysql_query` (500x)¹ | 155 ms | 0.310 ms/query | 3 226 q/s |
+| SELECT parallel — `mysql_pquery` (500x) | 94 ms | 0.187 ms/query | 5 319 q/s |
+| INSERT parallel — `mysql_pquery` (200x) | 45 ms | 0.224 ms/query | 4 444 q/s |
+| `mysql_format` with escape (50 000x) | 135 ms | 0.0027 ms | 370 370 ops/s |
 
-### Comparação direta
+### Head to head
 
-| Etapa | R41-4 | mysql_samp | Vencedor |
+| Stage | R41-4 | mysql_samp | Winner |
 |---|---|---|---|
-| SELECT FIFO (500x)¹ | **0,186 ms/q — 5.376 q/s** | 0,310 ms/q — 3.226 q/s | R41-4 1,7x |
-| SELECT paralelo (500x) | **0,101 ms/q — 9.804 q/s** | 0,187 ms/q — 5.319 q/s | R41-4 1,85x |
-| INSERT paralelo (200x) | 3,035 ms/q — 329 q/s | **0,224 ms/q — 4.444 q/s** | **mysql_samp 13,5x** |
-| mysql_format (50.000x) | **0,0012 ms — 781k/s** | 0,0027 ms — 370k/s | R41-4 2,1x |
+| SELECT FIFO (500x)¹ | **0.186 ms/q — 5 376 q/s** | 0.310 ms/q — 3 226 q/s | R41-4, 1.7× |
+| SELECT parallel (500x) | **0.101 ms/q — 9 804 q/s** | 0.187 ms/q — 5 319 q/s | R41-4, 1.85× |
+| INSERT parallel (200x) | 3.035 ms/q — 329 q/s | **0.224 ms/q — 4 444 q/s** | **mysql_samp, 13.5×** |
+| `mysql_format` (50 000x) | **0.0012 ms — 781k/s** | 0.0027 ms — 370k/s | R41-4, 2.1× |
 
-¹ A Etapa 1 não é uma comparação direta — ver nota abaixo.
+¹ Stage 1 is not an apples-to-apples comparison. See the note below.
 
-### Nota sobre a Etapa 1: não é apples-to-apples
+### Note on Stage 1: not apples-to-apples
 
-O R41-4 não tem equivalente direto ao `mysql_query` do mysql_samp. O mais próximo é `mysql_tquery`, que foi o usado. A diferença é arquitetural:
+R41-4 has no direct equivalent of mysql_samp's `mysql_query`. The closest one is `mysql_tquery`, which is what the benchmark uses. The difference is architectural:
 
-| Plugin | Native FIFO | Comportamento |
+| Plugin | FIFO native | Behavior |
 |---|---|---|
-| R41-4 | `mysql_tquery` | Pool de threads; callbacks despachados via `process_tick` — vários por tick quando o MySQL responde rápido (loopback) |
-| mysql_samp | `mysql_query` | Uma thread por query; resultados reordenados via canal `mpsc`, callbacks entregues em ordem sem depender do tick |
+| R41-4 | `mysql_tquery` | Thread pool; callbacks dispatched via `process_tick` — several per tick when MySQL responds fast enough (loopback) |
+| mysql_samp | `mysql_query` | One thread per query; results reordered through an `mpsc` channel, callbacks delivered in submission order regardless of tick |
 
-Em semântica do gamemode os dois são equivalentes (N queries, callbacks em ordem de submissão). O throughput do R41-4 na Etapa 1 depende da velocidade do MySQL: em loopback vence; em MySQL remoto perde, pois o despacho via tick passa a ser o gargalo.
+The gamemode-visible semantics are equivalent (N queries, callbacks in submission order). R41-4's Stage 1 throughput depends on MySQL latency: in loopback it wins; with remote MySQL it loses, because the per-tick dispatch becomes the bottleneck.
 
----
+## Executive summary
 
-## Resumo executivo
-
-| Critério | mysql_samp | R41-4 |
+| Criterion | mysql_samp | R41-4 |
 |---|---|---|
-| SELECT FIFO (500x)¹ | 0,310 ms/q — 3.226 q/s | **0,186 ms/q — 5.376 q/s** |
-| SELECT paralelo (500x) | 0,187 ms/q — 5.319 q/s | **0,101 ms/q — 9.804 q/s** |
-| INSERT paralelo (200x) | **0,224 ms/q — 4.444 q/s** | 3,035 ms/q — 329 q/s |
-| mysql_format (50.000x) | 0,0027 ms — 370k/s | **0,0012 ms — 781k/s** |
-| Segurança de memória | **Zero falhas garantidas** pelo compilador | Segfaults documentados (issues #291, #310+) |
-| SQL injection via `%s` | **Impossível** (`%s` escapa por padrão) | Possível (`%s` é raw no R41-4) |
-| Vazamento de memória | **Impossível** (cache gerenciado automaticamente) | Possível sem `cache_delete()` |
-| Dependências runtime | **Nenhuma** | MySQL C Connector + Boost |
-| Issues em aberto | Novo (em desenvolvimento ativo) | **50+ issues abertos** no GitHub |
-| Query síncrona bloqueante | **Removida** (nunca bloqueia o server tick) | Existe (`mysql_query` bloqueia) |
+| SELECT FIFO (500x)¹ | 0.310 ms/q — 3 226 q/s | **0.186 ms/q — 5 376 q/s** |
+| SELECT parallel (500x) | 0.187 ms/q — 5 319 q/s | **0.101 ms/q — 9 804 q/s** |
+| INSERT parallel (200x) | **0.224 ms/q — 4 444 q/s** | 3.035 ms/q — 329 q/s |
+| `mysql_format` (50 000x) | 0.0027 ms — 370k/s | **0.0012 ms — 781k/s** |
+| Memory safety | **Compiler-enforced** | Documented segfaults (issues #291, #310+) |
+| SQL injection via `%s` | **Impossible** (`%s` escapes by default) | Possible (`%s` is raw in R41-4) |
+| Memory leak | **Impossible** (cache managed automatically) | Possible without `cache_delete()` |
+| Runtime dependencies | **None** | MySQL C Connector + Boost |
+| Open issues | New (active development) | **50+ open issues** on GitHub |
+| Synchronous blocking query | **Removed** (never blocks the server tick) | Exists (`mysql_query` blocks) |
 
----
+## 1. Memory safety
 
-## 1. Segurança de memória
+### R41-4 (C++, manual memory)
 
-### R41-4 (C++ manual)
+R41-4 is C++ with raw pointers and manual memory management. Bugs publicly documented:
 
-O R41-4 usa C++ com ponteiros brutos e gestão manual de memória. Bugs documentados publicamente:
+- **Segmentation fault (SIGSEGV):** multiple reports of crashes during server shutdown while queries are in flight (issues #291, #310, #311)
+- **"FREE RESULT MISSING":** documented error indicating a result not freed correctly (issue #291)
+- **Crash when unloading the plugin with pending queries:** race between the plugin destructor and live threads
 
-- **Segmentation fault (SIGSEGV)**: múltiplos relatos de crash no shutdown do servidor enquanto queries estão em execução (issues #291, #310, #311)
-- **"FREE RESULT MISSING"**: erro documentado indicando resultado não liberado corretamente (issue #291)
-- **Crash ao destruir plugin com queries pendentes**: race condition entre o destrutor do plugin e threads ativas
-
-O próprio repositório do R41-4 avisa:
+The repository itself warns:
 
 > "Use `cache_delete()` if you don't need the query's result anymore or you will experience **memory leaks**."
 
 ### mysql_samp (Rust)
 
-O Rust garante em **tempo de compilação**:
+Rust guarantees at **compile time**:
 
-- **Zero buffer overflows** — verificação de bounds em todos os acessos a arrays
-- **Zero use-after-free** — o borrow checker impede acesso a memória liberada
-- **Zero data races** — `Send` e `Sync` garantem que apenas um thread acessa dados mutuamente exclusivos
-- **Cache auto-gerenciado** — sem necessidade de `cache_delete()` manual; o Rust libera automaticamente
+- **No buffer overflows** — every array access is bounds-checked.
+- **No use-after-free** — the borrow checker prevents access to freed memory.
+- **No data races** — `Send` and `Sync` prove only one thread accesses mutually-exclusive data.
+- **Cache auto-managed** — no manual `cache_delete()`; Rust drops the entry when its scope ends.
 
 ```rust
-// Impossível em Rust — o compilador rejeita em tempo de build:
+// Impossible in Rust — the compiler rejects this at build time:
 let cache = get_cache();
 drop(cache);
-use_cache(cache); // ERRO: value moved here — não chega a virar binário
+use_cache(cache); // ERROR: value moved here — never produces a binary
 ```
 
-**Resultado prático:** o mysql_samp nunca vai derrubar seu servidor por falha de memória. O R41-4 pode.
+**Practical effect:** mysql_samp cannot crash the server because of a memory bug. R41-4 can.
 
----
-
-## 2. Segurança SQL: injeção via `%s`
+## 2. SQL safety: injection via `%s`
 
 ### R41-4
 
-No R41-4, o especificador `%s` insere a string **sem escape**. Código de um gamemode real:
+In R41-4, `%s` inserts the string **without escaping**. Code from a real gamemode:
 
 ```pawn
-// R41-4 — VULNERÁVEL a SQL injection
+// R41-4 — VULNERABLE to SQL injection
 new query[256];
-mysql_format(gMysql, query, sizeof(query),
+mysql_format(g_mysql, query, sizeof(query),
     "SELECT * FROM accounts WHERE name = '%s'", inputName);
-// Se inputName = "' OR 1=1 -- "
-// Query gerada: SELECT * FROM accounts WHERE name = '' OR 1=1 -- '
-// Resultado: retorna TODAS as contas
+// If inputName = "' OR 1=1 -- "
+// Generated query: SELECT * FROM accounts WHERE name = '' OR 1=1 -- '
+// Result: returns EVERY account.
 ```
 
-Para escapar no R41-4 era necessário usar `%e` explicitamente — algo que a maioria dos gamemodes nunca fez.
+To escape in R41-4 you had to remember to use `%e` — something most gamemodes never did.
 
 ### mysql_samp
 
 ```pawn
-// mysql_samp — SEGURO por padrão
+// mysql_samp — SAFE by default
 new query[256];
-mysql_format(gMysql, query, sizeof(query),
+mysql_format(g_mysql, query, sizeof(query),
     "SELECT * FROM accounts WHERE name = '%s'", inputName);
-// Se inputName = "' OR 1=1 -- "
-// Query gerada: SELECT * FROM accounts WHERE name = '\' OR 1=1 -- '
-// Resultado: nenhuma linha (string escapada corretamente)
+// If inputName = "' OR 1=1 -- "
+// Generated query: SELECT * FROM accounts WHERE name = '\' OR 1=1 -- '
+// Result: no rows (string escaped correctly).
 ```
 
-`%s` sempre escapa. Para inserir valores raw confiáveis (nomes de tabela, SQL dinâmico), use `%r` explicitamente.
+`%s` always escapes. To insert trusted raw values (table names, fixed SQL fragments) use `%r` explicitly.
 
-**Resultado prático:** gamemodes migrados do R41-4 ficam automaticamente protegidos. Gamemodes novos não precisam pensar em escaping.
+**Practical effect:** gamemodes migrated from R41-4 become safe automatically. New gamemodes do not need to think about escaping.
 
----
-
-## 3. Dependências de runtime
+## 3. Runtime dependencies
 
 ### R41-4
 
-Para funcionar, o servidor precisa ter instalado:
+The server has to provide:
 
-| Biblioteca | Versão | Observação |
+| Library | Version | Notes |
 |---|---|---|
-| `libmysqlclient` | 5.5+ / 6.1 | Sistema ou bundled |
-| `Boost` | 1.57+ | Compilado no plugin |
-| `libz.so.1` | Sistema | Reportado em issue #292 |
+| `libmysqlclient` | 5.5+ / 6.1 | System or bundled |
+| `Boost` | 1.57+ | Compiled into the plugin |
+| `libz.so.1` | system | Reported in issue #292 |
 
-Erros típicos de configuração:
+Typical configuration errors:
 
 ```
 error while loading shared libraries: libmysqlclient.so.18: cannot open shared object file
@@ -200,156 +190,145 @@ libz.so.1: cannot open shared object file: No such file or directory
 
 ### mysql_samp
 
-**Zero dependências externas.** O binário é completamente autocontido:
+**No external runtime dependencies.** The binary is fully self-contained:
 
-- TLS/SSL via **rustls** (puro Rust, embutido no binário)
-- Driver MySQL via crate `mysql` com feature `default-rust` (sem libmysqlclient)
-- Sem Boost, sem OpenSSL, sem libz
+- TLS/SSL via **rustls** (pure Rust, embedded in the binary). Note: the `MYSQL_OPT_SSL` / `MYSQL_OPT_SSL_CA` options exist but are not yet wired through to the connection layer — see [Options → SSL caveat](options.md#ssl).
+- MySQL driver via the `mysql` crate with the `default-rust` feature (no `libmysqlclient`).
+- No Boost, no OpenSSL, no libz.
 
-Basta copiar o `.so` ou `.dll` para a pasta `plugins/`. Funciona imediatamente em qualquer distribuição Linux.
+Drop the `.so` or `.dll` into `plugins/` and it works on any Linux distribution.
 
----
-
-## 4. Modelo de threading
+## 4. Threading model
 
 ### R41-4
 
 ```
-GameMode ──► mysql_query()  ──► SÍNCRONO — bloqueia o server tick até query retornar
-         ──► mysql_tquery() ──► 1 worker thread por conexão (FIFO)
-         ──► mysql_pquery() ──► pool de conexões paralelas (sem ordem)
+GameMode ──► mysql_query()  ──► SYNCHRONOUS — blocks the server tick until the query returns
+         ──► mysql_tquery() ──► 1 worker thread per connection (FIFO)
+         ──► mysql_pquery() ──► pool of parallel connections (no order)
 
-Fila: Boost lockfree::spsc_queue (capacidade < 65.536 entradas)
-Sincronização: std::mutex em cada chamada MySQL C API
+Queue: Boost lockfree::spsc_queue (capacity < 65 536 entries)
+Sync: std::mutex around every MySQL C API call
 ```
 
-**Problema:** `mysql_query()` síncrono bloqueia o server tick. Se a query demorar 100 ms, o servidor fica frozen por 100 ms — nenhum jogador recebe pacotes nesse intervalo.
+**Problem:** synchronous `mysql_query()` blocks the server tick. A 100 ms query freezes the server for 100 ms — no player receives packets during that window.
 
 ### mysql_samp
 
 ```
-GameMode ──► mysql_query()  ──► fila FIFO via mpsc channel (NUNCA bloqueia)
-         ──► mysql_pquery() ──► pool paralelo via mpsc channel
+GameMode ──► mysql_query()  ──► FIFO queue over an mpsc channel (NEVER blocks)
+         ──► mysql_pquery() ──► parallel pool over an mpsc channel
 
-Sincronização: garantida pelo sistema de tipos do Rust (sem mutexes manuais)
+Sync: enforced by Rust's type system (no manual mutex)
 ```
 
-**Não existe query síncrona.** O mysql_samp eliminou `mysql_query()` bloqueante por design — impossível travar o servidor por acidente.
+**There is no synchronous query.** mysql_samp removed the blocking `mysql_query` by design — you cannot freeze the server by mistake.
 
----
+## 5. Critical R41-4 issues with no upstream fix
 
-## 5. Issues críticos do R41-4 sem correção
+Based on public issues at https://github.com/pBlueG/SA-MP-MySQL:
 
-Baseado nos issues públicos de https://github.com/pBlueG/SA-MP-MySQL:
-
-| Issue | Descrição | Status |
+| Issue | Description | Status |
 |---|---|---|
-| #291 | "FREE RESULT MISSING" — resultado não liberado corretamente | Aberto |
-| #288 | SSL não funciona no Linux | Aberto |
-| #277 | `mysql_tquery` não executa UPDATE em certas condições | Aberto |
-| #292 | `libz.so.1: cannot open shared object file` | Aberto |
-| Múltiplos | Segmentation fault (SIGSEGV) no shutdown com queries pendentes | Abertos |
-| Múltiplos | Incompatibilidade com sampgdk e outros plugins | Abertos |
+| #291 | "FREE RESULT MISSING" — result not freed correctly | Open |
+| #288 | SSL does not work on Linux | Open |
+| #277 | `mysql_tquery` skips UPDATE under certain conditions | Open |
+| #292 | `libz.so.1: cannot open shared object file` | Open |
+| Multiple | Segmentation fault (SIGSEGV) on shutdown with pending queries | Open |
+| Multiple | Incompatibility with sampgdk and other plugins | Open |
 
-O mysql_samp não apresenta nenhum desses problemas por design:
+mysql_samp does not have any of these by design:
 
-- **SIGSEGV no shutdown**: impossível em Rust — o borrow checker garante que threads não acessam dados já liberados
-- **SSL no Linux**: rustls não depende de libssl do sistema — funciona em qualquer distribuição
-- **libz / dependências ausentes**: não existe — sem dependências externas
-- **FREE RESULT MISSING**: impossível — a memória é liberada automaticamente pelo Rust
+- **SIGSEGV on shutdown:** impossible in Rust — the borrow checker prevents access to freed data after threads end.
+- **SSL on Linux:** rustls does not depend on the system `libssl` — it works on any distribution. (The plugin needs to wire the options through; see [Options → SSL caveat](options.md#ssl).)
+- **Missing `libz` / dependencies:** none exist — no external dependencies.
+- **FREE RESULT MISSING:** impossible — memory is freed automatically by Rust.
 
----
+## 6. API ergonomics
 
-## 6. API: ergonomia e modernidade
-
-### Valores de retorno direto vs by-ref
+### Return value vs by-ref
 
 ```pawn
-// R41-4 — by-ref (verboso)
+// R41-4 — by-ref (verbose)
 new rows;
 cache_get_row_count(rows);
 new score;
 cache_get_value_name_int(0, "score", score);
 
-// mysql_samp — retorno direto (limpo)
+// mysql_samp — return value (clean)
 new rows  = cache_get_row_count();
 new score = cache_get_value_name_int(0, "score");
 ```
 
-### Gestão de cache
+### Cache management
 
 ```pawn
-// R41-4 — DEVE chamar cache_delete ou há vazamento de memória
+// R41-4 — MUST call cache_delete or leak
 public OnPlayerData(playerid)
 {
-    // ... lê dados ...
-    cache_delete(cache_save()); // obrigatório
+    // ... read data ...
+    cache_delete(cache_save()); // required
 }
 
-// mysql_samp — sem cache_delete necessário
-// O cache ativo é liberado automaticamente após o callback
+// mysql_samp — no cache_delete needed
+// The active cache is released automatically after the callback returns.
 public OnPlayerData(playerid)
 {
-    // ... lê dados ...
-    // nada a fazer
+    // ... read data ...
+    // nothing to do
 }
 ```
 
-### Tags Pawn
+### Pawn tags
 
 ```pawn
-// R41-4 — tags customizadas (podem causar warnings)
-new MySQL:gMysql = mysql_connect(...);
-new Cache:cache  = cache_save();
-new ORM:orm      = orm_create("table", gMysql);
+// R41-4 — custom tags (can trigger warnings)
+new MySQL:g_mysql = mysql_connect(...);
+new Cache:cache   = cache_save();
+new ORM:orm       = orm_create("table", g_mysql);
 
-// mysql_samp — sem tags
-new gMysql = mysql_connect(...);
-new cache  = cache_save();
-new orm    = orm_create("table", gMysql);
+// mysql_samp — no tags
+new g_mysql = mysql_connect(...);
+new cache   = cache_save();
+new orm     = orm_create("table", g_mysql);
 ```
 
----
-
-## 7. Comparação completa de features
+## 7. Full feature matrix
 
 | Feature | mysql_samp | R41-4 |
 |---|---|---|
-| Queries FIFO (threaded) | `mysql_query` | `mysql_tquery` |
-| Queries paralelas | `mysql_pquery` | `mysql_pquery` |
-| Queries síncronas bloqueantes | **Removida por segurança** | `mysql_query` (legado) |
-| ORM | Sim (`orm_*`) | Sim (`orm_*`) |
-| Cache salvo | `cache_save()` / `cache_set_active()` | Igual |
-| `mysql_format %s` | Escapa automaticamente | Raw (inseguro) |
-| `mysql_format %e` | Alias de `%s` (escape) | Igual ao mysql_samp |
-| `mysql_format %r` | Raw (sem escape) | **Não existe** |
-| Tags Pawn | **Sem tags** | `MySQL:`, `Cache:`, `ORM:` |
-| Dependências runtime | **Nenhuma** | libssl + libmysqlclient + Boost |
-| open.mp | Compatível | Compatível |
-| SSL/TLS | rustls (embutido) | Via MySQL C Connector |
-| Multi-result sets | Não suportado | `cache_set_result()` |
-| Segfault possível | **Não** | **Sim** (documentado) |
-| Vazamento de cache | **Impossível** | Possível sem `cache_delete()` |
-| Issues conhecidos críticos | Nenhum em produção | 50+ abertos no GitHub |
+| Threaded FIFO query | `mysql_query` | `mysql_tquery` |
+| Parallel query | `mysql_pquery` | `mysql_pquery` |
+| Blocking sync query | **Removed for safety** | `mysql_query` (legacy) |
+| ORM | Yes (`orm_*`) | Yes (`orm_*`) |
+| Saved cache | `cache_save()` / `cache_set_active()` | Same |
+| `mysql_format %s` | Escapes automatically | Raw (unsafe) |
+| `mysql_format %e` | Alias for `%s` (escape) | Same as mysql_samp |
+| `mysql_format %r` | Raw (no escape) | **Does not exist** |
+| Pawn tags | **No tags** | `MySQL:`, `Cache:`, `ORM:` |
+| Runtime dependencies | **None** | libssl + libmysqlclient + Boost |
+| Open Multiplayer | Native + legacy | Compatible (legacy) |
+| SSL/TLS | rustls (binary) — options not yet wired through | Via MySQL C Connector |
+| Multi-result sets | Not supported | `cache_set_result()` |
+| Possible segfault | **No** | **Yes** (documented) |
+| Possible cache leak | **No** | Yes without `cache_delete()` |
+| Critical known issues | None in production | 50+ open on GitHub |
 
----
+## 8. Conclusion
 
-## 8. Conclusão
+The loopback numbers (best case for R41-4) show an honest picture:
 
-Os resultados medidos em loopback (melhor cenário para o R41-4) mostram um quadro honesto:
+**R41-4 has higher SELECT throughput in loopback** — 1.7–1.85× on FIFO and parallel SELECT, and 2.1× on `mysql_format`. With MySQL answering in < 0.1 ms (below one tick), R41-4 dispatches several callbacks per tick and exploits the server cache fully.
 
-**O R41-4 tem throughput de SELECT mais alto em loopback** — 1,7–1,85x em SELECT FIFO e paralelo, e 2,1x em `mysql_format`. Isso acontece porque, com MySQL respondendo em < 0,1ms (abaixo de um tick), o R41-4 consegue despachar múltiplos callbacks por tick e aproveita totalmente o cache do banco.
+**mysql_samp has 13.5× the INSERT throughput** — writes invalidate cache and force real I/O, making R41-4's per-tick callback bottleneck irrelevant and exposing the architectural difference. Real gamemodes write much more often (player save, logs, events) than they re-read the same row.
 
-**O mysql_samp tem 13,5x mais throughput em INSERT** — escritas invalidam cache e forçam I/O real, tornando o gargalo de callback-via-tick do R41-4 irrelevante e expondo a diferença arquitetural. Gamemodes reais fazem muito mais escrita (save de jogador, logs, eventos) do que leitura repetida da mesma row.
+**Loopback is the best case for R41-4.** With remote MySQL (RTT ≥ 1 ms, the typical production setup), every query lasts longer than a tick and R41-4's SELECT advantage disappears — mysql_samp wins every stage.
 
-**O loopback é o melhor cenário possível para o R41-4.** Com MySQL remoto (RTT ≥ 1ms, o que inclui a maioria dos ambientes de produção), cada query passa a durar mais que um tick e a vantagem de SELECT do R41-4 desaparece — o mysql_samp passa a vencer em todas as etapas.
+**mysql_samp's advantages are structural, independent of any benchmark:**
 
-**As vantagens do mysql_samp são estruturais, independentes de benchmark:**
+1. **Compiler-enforced memory safety** — no segfaults, no use-after-free, no data races.
+2. **Safe SQL by default** — `%s` escapes without the developer having to remember.
+3. **Zero dependencies** — works on any server without installing `libmysqlclient`, Boost or `libssl`.
+4. **No blocking sync query** — R41-4 has `mysql_query` that freezes the tick; mysql_samp does not.
 
-1. **Segurança de memória garantida pelo compilador** — sem possibilidade de segfault, use-after-free ou data race
-2. **Segurança SQL por padrão** — `%s` escapa sem que o desenvolvedor precise lembrar
-3. **Zero dependências** — funciona em qualquer servidor sem instalar libmysqlclient, Boost ou libssl
-4. **Sem query síncrona bloqueante** — o R41-4 tem `mysql_query` que congela o server tick; o mysql_samp não
-
-Para novos projetos, o mysql_samp é a escolha tecnicamente superior.
-Para projetos existentes que precisam de compatibilidade com código legado do R41-4, consulte [migracao.md](migracao.md).
+For new projects, mysql_samp is the technically superior choice. For existing projects that need compatibility with legacy R41-4 code, see [migration.md](migration.md).

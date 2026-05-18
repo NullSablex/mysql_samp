@@ -74,9 +74,19 @@ impl OptionsManager {
         };
 
         match option {
-            MysqlOptionKind::Port => opts.port = value as u16,
+            MysqlOptionKind::Port => {
+                let Ok(port) = u16::try_from(value) else {
+                    return false;
+                };
+                opts.port = port;
+            }
             MysqlOptionKind::Ssl => opts.ssl = value != 0,
-            MysqlOptionKind::ConnectTimeout => opts.connect_timeout = Some(value as u32),
+            MysqlOptionKind::ConnectTimeout => {
+                let Ok(timeout) = u32::try_from(value) else {
+                    return false;
+                };
+                opts.connect_timeout = Some(timeout);
+            }
             MysqlOptionKind::AutoReconnect => opts.auto_reconnect = value != 0,
             _ => return false,
         }
@@ -109,8 +119,14 @@ mod tests {
         assert_eq!(MysqlOptionKind::from_i32(0), Some(MysqlOptionKind::Port));
         assert_eq!(MysqlOptionKind::from_i32(1), Some(MysqlOptionKind::Ssl));
         assert_eq!(MysqlOptionKind::from_i32(2), Some(MysqlOptionKind::SslCa));
-        assert_eq!(MysqlOptionKind::from_i32(3), Some(MysqlOptionKind::ConnectTimeout));
-        assert_eq!(MysqlOptionKind::from_i32(4), Some(MysqlOptionKind::AutoReconnect));
+        assert_eq!(
+            MysqlOptionKind::from_i32(3),
+            Some(MysqlOptionKind::ConnectTimeout)
+        );
+        assert_eq!(
+            MysqlOptionKind::from_i32(4),
+            Some(MysqlOptionKind::AutoReconnect)
+        );
     }
 
     #[test]

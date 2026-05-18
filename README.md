@@ -1,53 +1,54 @@
 # mysql_samp
 
-> Plugin MySQL para SA:MP escrito em Rust — por [NullSablex](https://github.com/NullSablex)
+> MySQL plugin for SA-MP written in Rust — by [NullSablex](https://github.com/NullSablex)
 
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
-![SA:MP](https://img.shields.io/badge/SA:MP-0.3.7+-orange)
-![open.mp](https://img.shields.io/badge/open.mp-compatível-orange)
+![SA-MP](https://img.shields.io/badge/SA--MP-0.3.7+-orange)
+![Open Multiplayer](https://img.shields.io/badge/Open%20Multiplayer-native%20%26%20legacy-orange)
 ![Build](https://img.shields.io/badge/build-Linux%20%7C%20Windows-green)
 ![Architecture](https://img.shields.io/badge/arch-x86%20(32--bit)-lightgrey)
-[![Release](https://img.shields.io/github/v/release/NullSablex/MySQL-SAMP?label=download)](https://github.com/NullSablex/mysql_samp/releases/latest)
+[![Release](https://img.shields.io/github/v/release/NullSablex/mysql_samp?label=download)](https://github.com/NullSablex/mysql_samp/releases/latest)
 
-> [!WARNING]
-> Este projeto está em fase inicial de desenvolvimento. A API pode sofrer alterações entre versões.
+## Overview
 
-## Visão geral
+**mysql_samp** is a modern MySQL plugin for SA-MP (San Andreas Multiplayer) and [Open Multiplayer](https://open.mp) (open.mp), written entirely in Rust. It provides a complete API for database connectivity, non-blocking queries, a cache system and an ORM, with zero external runtime dependencies.
 
-**mysql_samp** é um plugin MySQL moderno para SA:MP (San Andreas Multiplayer) e [open.mp](https://open.mp) construído inteiramente em Rust. Fornece uma API completa para conectividade com banco de dados, queries non-blocking, sistema de cache e ORM, sem nenhuma dependência externa em runtime.
+The same binary loads on SA-MP and on Open Multiplayer — natively as a component (recommended) or via legacy mode.
 
-### Destaques
+### Highlights
 
-- **Zero dependências externas** — sem `libmysqlclient`, sem OpenSSL. O protocolo MySQL e o TLS (via rustls) são compilados diretamente no binário.
-- **Todas as queries são non-blocking** — `mysql_query` executa em threads separadas com ordenação FIFO. Nunca trava o servidor.
-- **Pool de conexões** — reutilização automática de conexões via `mysql::Pool`, com thread safety nativa.
-- **ORM integrado** — mapeamento de variáveis Pawn para colunas do banco com operações CRUD automáticas.
-- **Sistema de cache** — acesso aos resultados via stack automático ou persistência manual com `cache_save`.
-- **Seguro por padrão** — escape automático de strings, UTF-8 forçado, proteção contra SQL injection e memory exhaustion.
-- **Deploy simples** — copie o `.so` ou `.dll` e funciona. Sem bibliotecas extras para instalar.
+- **Zero external dependencies** — no `libmysqlclient`, no OpenSSL. The MySQL protocol and TLS (via rustls) are compiled directly into the binary.
+- **All queries are non-blocking** — `mysql_query` runs on background threads with FIFO ordering. The server never stalls.
+- **Connection pool** — automatic reuse through `mysql::Pool`, thread-safe by design.
+- **Built-in ORM** — maps Pawn variables to columns with CRUD helpers.
+- **Cache system** — results accessible through an automatic stack or persisted manually with `cache_save`.
+- **Safe by default** — string escaping, forced UTF-8, protection against SQL injection and memory exhaustion.
+- **Universal binary** — built on top of [rust-samp](https://github.com/NullSablex/rust-samp) v3.0.0; one `.so`/`.dll` runs on SA-MP and on Open Multiplayer (native component or legacy).
+- **Simple deploy** — drop the `.so` or `.dll` in and you are done. No system libraries to install.
 
-## Instalação
+## Installation
 
-1. Baixe a versão mais recente para sua plataforma:
-   - `mysql_samp.so` (Linux)
-   - `mysql_samp.dll` (Windows)
-2. Coloque o arquivo no diretório `plugins/` do seu servidor.
-3. Copie `mysql_samp.inc` para a pasta de includes do compilador:
-   - **Windows:** `pawno/include/` ou `qawno/include/`
-   - **Linux:** `include/` (na raiz do servidor)
-4. Adicione ao `server.cfg` (ou `config.json` no open.mp):
-   ```
-   plugins mysql_samp.so
-   ```
-   No Windows:
-   ```
-   plugins mysql_samp.dll
-   ```
+1. Download the latest release for your platform:
+   - `mysql_samp.so` (Linux i686)
+   - `mysql_samp.dll` (Windows i686, MSVC ABI)
+   - `mysql_samp.inc` (Pawn include, shared between SA-MP and Open Multiplayer)
+2. Place the binary in the server's `plugins/` directory.
+3. Copy `mysql_samp.inc` to your compiler's include folder:
+   - **Windows:** `pawno/include/` or `qawno/include/`
+   - **Linux:** `include/` (at the server root)
+4. Register the plugin:
+   - **SA-MP** — add to `server.cfg`:
+     ```
+     plugins mysql_samp.so
+     ```
+     (or `mysql_samp.dll` on Windows)
+   - **Open Multiplayer (native, recommended)** — list the binary under `components` in `config.json`. It will be loaded via `ComponentEntryPoint`, with access to `ICore`, `ITimersComponent` and the other native APIs.
+   - **Open Multiplayer (legacy)** — still supported. Register the binary under `legacy_plugins` in `config.json` if you prefer the SA-MP compatibility path. Same binary, no extra build flags.
 
 > [!IMPORTANT]
-> Não é necessário instalar `libmysqlclient` ou qualquer outra biblioteca. O plugin é auto-contido.
+> No `libmysqlclient` or other system library is required. The plugin is self-contained.
 
-## Início rápido
+## Quick start
 
 ```pawn
 #include <a_samp>
@@ -56,13 +57,13 @@
 new gMysql;
 
 public OnGameModeInit() {
-    gMysql = mysql_connect("127.0.0.1", "root", "senha", "samp_db");
+    gMysql = mysql_connect("127.0.0.1", "root", "password", "samp_db");
 
     if (mysql_errno()) {
         return 1;
     }
 
-    // Query non-blocking com callback
+    // Non-blocking query with callback
     mysql_query(gMysql, "SELECT * FROM players LIMIT 10", "OnPlayersLoaded");
     return 1;
 }
@@ -70,7 +71,7 @@ public OnGameModeInit() {
 forward OnPlayersLoaded();
 public OnPlayersLoaded() {
     new rows = cache_get_row_count();
-    printf("Jogadores encontrados: %d", rows);
+    printf("Players found: %d", rows);
 
     new name[MAX_PLAYER_NAME];
     for (new i = 0; i < rows; i++) {
@@ -85,48 +86,58 @@ public OnGameModeExit() {
 }
 ```
 
-## Documentacao
+## Documentation
 
-A documentacao completa do plugin esta em [docs/](docs/):
+The full plugin documentation lives in [docs/](docs/):
 
-| Documento | Conteudo |
+| Document | Contents |
 |---|---|
-| [Instalacao e configuracao](docs/instalacao.md) | Setup, server.cfg, requisitos |
-| [Conexao](docs/conexao.md) | mysql_connect, mysql_close, options, charset, SSL |
+| [Installation and setup](docs/installation.md) | Setup, server.cfg / config.json, requirements |
+| [Connection](docs/connection.md) | mysql_connect, mysql_close, mysql_status, charset |
+| [Options](docs/options.md) | All `MYSQL_OPT_*` values, defaults, SSL caveat |
 | [Queries](docs/queries.md) | mysql_query, mysql_pquery, mysql_format, mysql_escape_string |
-| [Cache](docs/cache.md) | Todas as funcoes cache_*, save/restore, ciclo de vida |
-| [ORM](docs/orm.md) | Mapeamento objeto-relacional, CRUD, bindings |
-| [Tratamento de erros](docs/erros.md) | mysql_errno, mysql_error, OnQueryError, codigos |
-| [Referencia da API](docs/api.md) | Tabela completa de todas as natives e forwards |
-| [Seguranca](docs/seguranca.md) | Escape, UTF-8, limites, boas praticas |
-| [Migracao do R41-4](docs/migracao.md) | Diferencas e como migrar do mysql R41-4 |
+| [Cache](docs/cache.md) | All cache_* functions, save/restore, lifecycle |
+| [ORM](docs/orm.md) | Object-relational mapping, CRUD, bindings |
+| [Errors](docs/errors.md) | mysql_errno, mysql_error, OnQueryError, error codes |
+| [Security](docs/security.md) | Escaping, UTF-8, resource limits, best practices |
+| [API reference](docs/api-reference.md) | Full table of every native and forward |
+| [Migration from R41-4](docs/migration.md) | Differences and migration steps from mysql R41-4 |
 
-## Compilando o codigo-fonte
+## Building from source
 
-### Requisitos
+### Requirements
 
-- Toolchain Rust com targets: `i686-unknown-linux-gnu`, `i686-pc-windows-gnu`
-- Nenhuma biblioteca do sistema necessaria (build 100% Rust)
+- Rust stable toolchain with the targets `i686-unknown-linux-gnu` and `i686-pc-windows-msvc`
+- `cargo-xwin` for cross-compiling the Windows `.dll` from Linux (installed automatically by the script)
+- No system libraries — the build is 100% Rust
 
-### Build de desenvolvimento
-
-```bash
-cargo build
-```
-
-### Build de release (Linux + Windows)
+### Development build
 
 ```bash
-bash scripts/build.sh
+cargo build --target i686-unknown-linux-gnu
 ```
 
-Os arquivos sao gerados em `dist/` com checksums SHA-256.
+### Release build (Linux + Windows)
+
+From Linux:
+
+```bash
+./scripts/build-linux.sh
+```
+
+From Windows (Git Bash):
+
+```bash
+./scripts/build-windows.sh
+```
+
+Both scripts produce `dist/mysql_samp.so` and `dist/mysql_samp.dll`, each with full SA-MP + Open Multiplayer native support.
 
 > [!CAUTION]
-> Este plugin e distribuido sob a GPL v3. Qualquer trabalho derivado deve manter o codigo-fonte aberto sob a mesma licenca.
+> This plugin is distributed under the GPL v3. Any derivative work must keep the source code open under the same license.
 
-## Licenca
+## License
 
 Copyright (c) 2026 NullSablex
 
-Este projeto esta licenciado sob a [GNU General Public License v3.0](LICENSE).
+This project is licensed under the [GNU General Public License v3.0](LICENSE).

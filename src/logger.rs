@@ -1,6 +1,6 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 const LOG_DIR: &str = "logs";
 const LOG_FILE: &str = "logs/mysql.log";
@@ -8,6 +8,10 @@ const PREFIX: &str = "[MySQL]";
 
 /// Log level: 0=none, 1=error, 2=warning, 3=info, 4=all (default)
 static LOG_LEVEL: AtomicI32 = AtomicI32::new(4);
+
+/// Set once if writing to `logs/mysql.log` fails — used to emit a single
+/// console error instead of silently dropping every subsequent log line.
+static FILE_WRITE_REPORTED: AtomicBool = AtomicBool::new(false);
 
 pub struct Logger;
 
@@ -23,28 +27,28 @@ impl Logger {
 
     pub fn info(msg: &str) {
         if LOG_LEVEL.load(Ordering::Relaxed) >= 3 {
-            log::info!("{} {}", PREFIX, msg);
+            samp::log::info!("{} {}", PREFIX, msg);
             Self::write_file("INFO", msg);
         }
     }
 
     pub fn warn(msg: &str) {
         if LOG_LEVEL.load(Ordering::Relaxed) >= 2 {
-            log::warn!("{} {}", PREFIX, msg);
+            samp::log::warn!("{} {}", PREFIX, msg);
             Self::write_file("WARNING", msg);
         }
     }
 
     pub fn error(msg: &str) {
         if LOG_LEVEL.load(Ordering::Relaxed) >= 1 {
-            log::error!("{} {}", PREFIX, msg);
+            samp::log::error!("{} {}", PREFIX, msg);
             Self::write_file("ERROR", msg);
         }
     }
 
     pub fn error_detail(console_msg: &str, detail: &str) {
         if LOG_LEVEL.load(Ordering::Relaxed) >= 1 {
-            log::error!("{} {}", PREFIX, console_msg);
+            samp::log::error!("{} {}", PREFIX, console_msg);
             Self::write_file("ERROR", detail);
         }
     }
@@ -58,30 +62,37 @@ impl Logger {
         let build_time = env!("BUILD_TIME");
         let build_year = env!("BUILD_YEAR");
 
-        log::info!("");
-        log::info!("  | {} {} | {}", name, version, build_year);
-        log::info!("  |-------------------------------");
-        log::info!("  | Author and maintainer: {}", value_or(author, "Unknown"));
-        log::info!("");
-        log::info!("  | Compiled: {} at {}", build_date, build_time);
-        log::info!("  |-------------------------------");
-        log::info!("  | Repository: {}", value_or(repository, "N/A"));
-        log::info!("");
+        samp::log::info!("");
+        samp::log::info!("  | {} {} | {}", name, version, build_year);
+        samp::log::info!("  |-------------------------------");
+        samp::log::info!("  | Author and maintainer: {}", value_or(author, "Unknown"));
+        samp::log::info!("");
+        samp::log::info!("  | Compiled: {} at {}", build_date, build_time);
+        samp::log::info!("  |-------------------------------");
+        samp::log::info!("  | Repository: {}", value_or(repository, "N/A"));
+        samp::log::info!("");
     }
 
     fn write_file(level: &str, message: &str) {
         let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
         let line = format!("[{}] [{}] {}\n", timestamp, level, message);
 
-        let Ok(mut file) = OpenOptions::new()
+        let result = OpenOptions::new()
             .create(true)
             .append(true)
             .open(LOG_FILE)
-        else {
-            return;
-        };
+            .and_then(|mut file| file.write_all(line.as_bytes()));
 
-        let _ = file.write_all(line.as_bytes());
+        if let Err(err) = result
+            && !FILE_WRITE_REPORTED.swap(true, Ordering::Relaxed)
+        {
+            samp::log::error!(
+                "{} Failed to write {}: {}. Further file-write errors will be suppressed.",
+                PREFIX,
+                LOG_FILE,
+                err
+            );
+        }
     }
 }
 

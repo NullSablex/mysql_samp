@@ -1,25 +1,8 @@
-# Options de conexão
+# Options
 
-O mysql_samp permite configurar parâmetros opcionais de conexão antes de chamar `mysql_connect`. Sem options, os valores padrão são usados automaticamente.
+Options are **optional**. A bare `mysql_connect("host", "user", "pass", "db")` uses the defaults below. Build an options handle only when you need a non-default port, a connection timeout or to opt out of auto-reconnect.
 
----
-
-## Como usar
-
-```pawn
-new opts = mysql_options_new();
-mysql_options_set_int(opts, MYSQL_OPT_PORT, 3307);
-mysql_options_set_int(opts, MYSQL_OPT_SSL, 1);
-mysql_options_set_str(opts, MYSQL_OPT_SSL_CA, "/etc/ssl/certs/ca.pem");
-
-new gMysql = mysql_connect("127.0.0.1", "root", "senha", "meu_banco", opts);
-```
-
-O handle de options pode ser reutilizado em múltiplas conexões. Ele não é destruído automaticamente — você pode descartá-lo após o `mysql_connect` sem efeitos colaterais.
-
----
-
-## Natives
+## API
 
 ```pawn
 native mysql_options_new();
@@ -27,170 +10,93 @@ native bool:mysql_options_set_int(handle, option, value);
 native bool:mysql_options_set_str(handle, option, const value[]);
 ```
 
-- `mysql_options_new()` — cria um novo conjunto de options com valores padrão. Retorna o handle (>= 1) ou 0 em caso de falha.
-- `mysql_options_set_int(handle, option, value)` — define uma option de valor inteiro. Retorna `true` em sucesso.
-- `mysql_options_set_str(handle, option, value[])` — define uma option de valor string. Retorna `true` em sucesso.
+- `mysql_options_new()` creates a fresh handle (`>= 1`) populated with the defaults.
+- `mysql_options_set_int(handle, option, value)` returns `true` on success, `false` if the handle is invalid, the option does not exist, the option is a string-only option, or the integer is out of range for the option type (for example a negative port).
+- `mysql_options_set_str(handle, option, value)` returns `true` on success, `false` if the handle is invalid, the option does not exist, or the option is an integer-only option.
 
----
+Handles are not destroyed automatically. There is no explicit destroy native — once you pass the handle to `mysql_connect`, you can drop the reference. Memory used by the handle stays alive for the duration of the plugin (handles are stored in a `HashMap` keyed by id) and the cost is negligible (a small struct per handle).
 
-## Options disponíveis
+## Usage
 
-### `MYSQL_OPT_PORT` (int)
+```pawn
+new opts = mysql_options_new();
+mysql_options_set_int(opts, MYSQL_OPT_PORT, 3307);
+mysql_options_set_int(opts, MYSQL_OPT_CONNECT_TIMEOUT, 10);
+mysql_options_set_int(opts, MYSQL_OPT_AUTO_RECONNECT, 0);
 
-**Padrão:** `3306`
+new g_mysql = mysql_connect("db.example.com", "user", "pass", "samp_db", opts);
+```
 
-Porta TCP do servidor MySQL.
+The same handle can be reused across multiple `mysql_connect` calls.
+
+## Available options
+
+| Constant | Integer / String | Default | Description |
+|---|---|---|---|
+| `MYSQL_OPT_PORT` | int | `3306` | TCP port. Must fit in `u16` (`0..=65535`). |
+| `MYSQL_OPT_SSL` | int (bool) | `0` (off) | SSL toggle — **currently a no-op**, see [SSL caveat](#ssl) below. |
+| `MYSQL_OPT_SSL_CA` | string | empty | Path to a PEM CA file — **currently a no-op**, see [SSL caveat](#ssl) below. |
+| `MYSQL_OPT_CONNECT_TIMEOUT` | int (seconds) | none | TCP connect timeout. Must fit in `u32`. |
+| `MYSQL_OPT_AUTO_RECONNECT` | int (bool) | `1` (on) | Retry a query once when the server drops the connection (see [MYSQL_OPT_AUTO_RECONNECT](#mysql_opt_auto_reconnect)). |
+
+### MYSQL_OPT_PORT
 
 ```pawn
 mysql_options_set_int(opts, MYSQL_OPT_PORT, 3307);
 ```
 
-Use quando o MySQL não está na porta padrão, ou quando você usa um proxy/túnel em outra porta.
+Ignored when the host is a Unix socket (path starts with `/`).
 
----
+### MYSQL_OPT_CONNECT_TIMEOUT
 
-### `MYSQL_OPT_SSL` (int, bool)
-
-**Padrão:** `0` (desativado)
-
-Ativa ou desativa o uso de SSL/TLS na conexão.
-
-```pawn
-mysql_options_set_int(opts, MYSQL_OPT_SSL, 1); // ativar
-mysql_options_set_int(opts, MYSQL_OPT_SSL, 0); // desativar
-```
-
-O mysql_samp usa **rustls** internamente — sem dependência de `libssl` do sistema. Funciona em qualquer distribuição Linux sem instalar nada.
-
-> **Atenção:** ativar SSL sem fornecer `MYSQL_OPT_SSL_CA` faz a conexão aceitar qualquer certificado do servidor. Para validação completa, forneça o caminho do CA via `MYSQL_OPT_SSL_CA`.
-
----
-
-### `MYSQL_OPT_SSL_CA` (string)
-
-**Padrão:** nenhum (SSL sem verificação de CA)
-
-Caminho absoluto para o arquivo de certificado CA (`.pem`) usado para validar o certificado do servidor MySQL.
-
-```pawn
-mysql_options_set_str(opts, MYSQL_OPT_SSL_CA, "/etc/ssl/certs/mysql-ca.pem");
-```
-
-Requer que `MYSQL_OPT_SSL` esteja ativado. Garante que a conexão seja estabelecida apenas com o servidor correto, prevenindo ataques man-in-the-middle.
-
-> Aceita somente valores via `mysql_options_set_str`. Chamar `mysql_options_set_int` com esta option retorna `false`.
-
----
-
-### `MYSQL_OPT_CONNECT_TIMEOUT` (int, segundos)
-
-**Padrão:** sem timeout (aguarda indefinidamente)
-
-Tempo máximo em segundos para estabelecer a conexão TCP inicial com o servidor MySQL.
+Time in seconds the plugin will wait for the initial TCP connection. Without this option the plugin waits indefinitely (the default of the `mysql` crate).
 
 ```pawn
 mysql_options_set_int(opts, MYSQL_OPT_CONNECT_TIMEOUT, 10);
 ```
 
-Se o servidor não responder dentro do prazo, `mysql_connect` retorna 0 e o erro fica disponível via `mysql_errno` / `mysql_error`.
+If the timeout expires, `mysql_connect` returns `0` and `mysql_errno(0)` returns `MYSQL_ERROR_CONNECTION_FAILED`.
 
-Recomendado para ambientes de produção onde falhas de rede devem ser detectadas rapidamente em vez de travar o servidor por tempo indeterminado na inicialização.
-
----
-
-### `MYSQL_OPT_AUTO_RECONNECT` (int, bool)
-
-**Padrão:** `1` (ativado)
-
-Controla a reconexão automática em caso de queda da conexão com o MySQL.
+### MYSQL_OPT_AUTO_RECONNECT
 
 ```pawn
-mysql_options_set_int(opts, MYSQL_OPT_AUTO_RECONNECT, 1); // ativar (padrão)
-mysql_options_set_int(opts, MYSQL_OPT_AUTO_RECONNECT, 0); // desativar
+mysql_options_set_int(opts, MYSQL_OPT_AUTO_RECONNECT, 1);  // default, retry once
+mysql_options_set_int(opts, MYSQL_OPT_AUTO_RECONNECT, 0);  // do not retry, report immediately
 ```
 
-**Comportamento quando ativado:** se uma query falhar por perda de conexão — por exemplo, o MySQL reiniciou, o `wait_timeout` expirou, ou houve uma interrupção de rede — o plugin tenta automaticamente obter uma nova conexão do pool e reexecutar a query uma vez antes de reportar o erro ao callback `OnQueryError`.
+**Behavior when enabled:** if a threaded query (`mysql_query` / `mysql_pquery`) fails with a connection-lost error (the `mysql` crate reports `code == 0` for IO and TCP errors), the plugin drops the current connection, fetches a new one from the pool and re-runs the same query once before surfacing the error to `OnQueryError`.
 
-**Comportamento quando desativado:** qualquer falha de conexão durante uma query é reportada imediatamente via `OnQueryError`, sem tentativa de reconexão.
+**Behavior when disabled:** the very first failure is reported. No retry.
 
-**Quando desativar:** se o seu gamemode precisa saber exatamente quando uma reconexão ocorreu (por exemplo, para reiniciar transações ou tomar ação específica em caso de queda), desative e trate o erro manualmente em `OnQueryError`.
+When to disable: if your gamemode needs to know exactly when a reconnect happened — for instance, to reapply session-scoped state such as `SET @user_id` — turn this off and handle the recovery yourself in `OnQueryError`.
 
-> Esta option afeta apenas queries em andamento (via `mysql_query` / `mysql_pquery`). A reconexão inicial ao banco na chamada de `mysql_connect` é controlada pelo `MYSQL_OPT_CONNECT_TIMEOUT`.
+This option only affects in-flight queries. The TCP handshake inside `mysql_connect` is governed by `MYSQL_OPT_CONNECT_TIMEOUT`.
 
----
+### SSL
 
-## Tabela resumo
+> **Important caveat.** `MYSQL_OPT_SSL` and `MYSQL_OPT_SSL_CA` are accepted by `mysql_options_set_int` / `mysql_options_set_str` and the values are stored in the options struct, but the connection builder in [`src/connection.rs`](https://github.com/NullSablex/mysql_samp/blob/master/src/connection.rs) does **not** wire them through to the `mysql` crate yet — there is a `TODO` waiting for the `mysql` crate to expose rustls-friendly options. Setting these today has no effect on the connection: the plugin always connects in clear text.
 
-| Constant | Tipo | Padrão | Nativa |
-|---|---|---|---|
-| `MYSQL_OPT_PORT` | int | `3306` | `set_int` |
-| `MYSQL_OPT_SSL` | int (bool) | `0` | `set_int` |
-| `MYSQL_OPT_SSL_CA` | string | — | `set_str` |
-| `MYSQL_OPT_CONNECT_TIMEOUT` | int (segundos) | sem timeout | `set_int` |
-| `MYSQL_OPT_AUTO_RECONNECT` | int (bool) | `1` | `set_int` |
+The `mysql` crate is compiled with the `default-rust` feature (rustls is in the binary), so the SSL plumbing exists in the dependency tree — it just is not exposed by the plugin yet. Until that lands, plan around it (use a TLS-terminating proxy, or accept the limitation in your threat model).
 
----
+## Setting a string option on an int-only option (or vice-versa)
 
-## Exemplos completos
-
-### Conexão básica sem options
+The plugin rejects mismatched setters:
 
 ```pawn
-new gMysql = mysql_connect("127.0.0.1", "root", "senha", "meu_banco");
+mysql_options_set_str(opts, MYSQL_OPT_PORT, "3307");  // returns false, port is int
+mysql_options_set_int(opts, MYSQL_OPT_SSL_CA, 1);     // returns false, ssl_ca is string
 ```
 
-Porta 3306, sem SSL, sem timeout, reconexão automática ativada.
+The only string option today is `MYSQL_OPT_SSL_CA`. Everything else is int.
 
----
+## Out-of-range integers
 
-### Porta customizada
+`MYSQL_OPT_PORT` must fit in `u16`. `MYSQL_OPT_CONNECT_TIMEOUT` must fit in `u32`. Negative or oversized values are rejected:
 
 ```pawn
-new opts = mysql_options_new();
-mysql_options_set_int(opts, MYSQL_OPT_PORT, 3307);
-
-new gMysql = mysql_connect("127.0.0.1", "root", "senha", "meu_banco", opts);
+mysql_options_set_int(opts, MYSQL_OPT_PORT, -1);     // false
+mysql_options_set_int(opts, MYSQL_OPT_PORT, 70000);  // false (over u16::MAX)
+mysql_options_set_int(opts, MYSQL_OPT_CONNECT_TIMEOUT, -5);  // false
 ```
 
----
-
-### SSL com CA + timeout
-
-```pawn
-new opts = mysql_options_new();
-mysql_options_set_int(opts, MYSQL_OPT_PORT, 3306);
-mysql_options_set_int(opts, MYSQL_OPT_SSL, 1);
-mysql_options_set_str(opts, MYSQL_OPT_SSL_CA, "/etc/ssl/certs/mysql-ca.pem");
-mysql_options_set_int(opts, MYSQL_OPT_CONNECT_TIMEOUT, 15);
-
-new gMysql = mysql_connect("db.servidor.com", "usuario", "senha", "producao", opts);
-if (!gMysql)
-{
-    new err[256];
-    mysql_error(0, err);
-    printf("[MySQL] Falha na conexao: %s", err);
-}
-```
-
----
-
-### Desativar reconexão automática (controle manual)
-
-```pawn
-new opts = mysql_options_new();
-mysql_options_set_int(opts, MYSQL_OPT_AUTO_RECONNECT, 0);
-
-new gMysql = mysql_connect("127.0.0.1", "root", "senha", "meu_banco", opts);
-```
-
-```pawn
-// Tratamento manual de erros de conexão
-public OnQueryError(errorid, const error[], const callback[], const query[], connId)
-{
-    if (errorid == MYSQL_ERROR_QUERY_FAILED)
-    {
-        printf("[MySQL] Query falhou na conexao %d: %s", connId, error);
-        // Lógica de recuperação personalizada aqui
-    }
-}
-```
+This is stricter than the old MySQL R41-4 plugin, which silently wrapped negative ports to large positive values. Catch the `false` return and fix the input.

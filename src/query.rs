@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
-use std::sync::Arc;
 use std::thread;
 
 use mysql::Pool;
 
 use crate::cache::CacheEntry;
-use crate::connection::{attempt_query, QueryError};
+use crate::connection::{QueryError, attempt_query};
 
 /// Parameter type for callback invocation.
 #[derive(Debug, Clone)]
@@ -35,6 +35,12 @@ pub struct QueryResult {
     pub sequence: u64,
 }
 
+/// Sequence threshold used to mark parallel-query results inside the same
+/// `pending_ordered` map. Ordered queries use sequences starting at 0 and
+/// growing by one; parallel results are stored at `u64::MAX` and counting
+/// downward, so anything `>= PARALLEL_KEY_THRESHOLD` is a parallel entry.
+const PARALLEL_KEY_THRESHOLD: u64 = u64::MAX / 2;
+
 /// Manages threaded query execution and result collection.
 pub struct QueryManager {
     sender: mpsc::Sender<QueryResult>,
@@ -60,10 +66,11 @@ impl QueryManager {
 
     /// Returns the number of queries currently in-flight (submitted but not yet dispatched).
     pub fn pending_count(&self) -> u64 {
-        self.in_flight.load(Ordering::Relaxed) + self.pending_ordered.len() as u64
+        self.in_flight.load(Ordering::Relaxed)
+            + u64::try_from(self.pending_ordered.len()).unwrap_or(u64::MAX)
     }
 
-/// Submits an ordered query (FIFO — callbacks dispatched in submission order).
+    /// Submits an ordered query (FIFO — callbacks dispatched in submission order).
     pub fn submit_query(
         &mut self,
         pool: Pool,
@@ -150,7 +157,7 @@ impl QueryManager {
             } else {
                 // Parallel queries go to pending with a special high sequence
                 // so they are dispatched after ordered ones in this tick
-                let key = u64::MAX - self.pending_ordered.len() as u64;
+                let key = u64::MAX - u64::try_from(self.pending_ordered.len()).unwrap_or(u64::MAX);
                 self.pending_ordered.insert(key, result);
             }
         }
@@ -167,7 +174,7 @@ impl QueryManager {
         let parallel_keys: Vec<u64> = self
             .pending_ordered
             .keys()
-            .filter(|k| **k >= u64::MAX / 2)
+            .filter(|k| **k >= PARALLEL_KEY_THRESHOLD)
             .copied()
             .collect();
 

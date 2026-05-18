@@ -1,117 +1,136 @@
-# Checklist: mysql_samp vs R41-4
+# Checklist: mysql_samp vs MySQL R41-4
 
-## Conexão
+Coverage of the MySQL R41-4 (BlueG / maddinat0r) Pawn API by **mysql_samp 1.1.0**. Source of truth: [`include/mysql_samp.inc.in`](include/mysql_samp.inc.in) and [`src/lib.rs`](src/lib.rs).
 
-| Funcionalidade | R41-4 | mysql_samp | Notas |
+## Connection
+
+| Feature | R41-4 | mysql_samp | Notes |
 |---|---|---|---|
-| `mysql_connect` | Sim | Sim | Nosso não usa tags |
-| `mysql_connect_file` | Sim | - | Conexão via .ini |
-| `mysql_close` | Sim | Sim | |
-| `mysql_errno` | Sim | Sim | Retorna código interno do plugin |
-| `mysql_error` | Sim | - | Retorna string do erro |
-| `mysql_escape_string` | Sim | Sim | Escape puro (sem connId) |
-| `mysql_format` | Sim | Sim | printf-like com `%d`, `%f`, `%s`, `%e` |
-| `mysql_set_charset` | Sim | - | |
-| `mysql_get_charset` | Sim | - | |
-| `mysql_stat` / `mysql_status` | Sim | Sim | Nosso usa `mysql_status` |
-| `mysql_unprocessed_queries` | Sim | - | Queries pendentes na fila |
-| `mysql_log` | Sim | - | Nível de log configurável |
-| Socket Unix | - | Sim | Detecta por `/` no host |
+| `mysql_connect` | Yes | Yes | No custom Pawn tags |
+| `mysql_connect_file` | Yes | — | `.ini`-based connect (not supported) |
+| `mysql_close` | Yes | Yes | |
+| `mysql_errno` | Yes | Yes | Returns the MySQL error code (1062, 1045, …) or `0` for no error / `MYSQL_ERROR_*` (1..=8) for plugin-side errors |
+| `mysql_error` | Yes | Yes | Writes the last error message into the destination buffer |
+| `mysql_escape_string` | Yes | Yes | Pure function — no `connId` required |
+| `mysql_format` | Yes | Yes | `printf`-like with `%d`, `%i`, `%f`, `%s`, `%e`, `%r`, `%%` |
+| `mysql_set_charset` | Yes | Yes | Runs `SET NAMES '<charset>'` on the connection |
+| `mysql_get_charset` | Yes | Yes | Reads `@@character_set_connection` |
+| `mysql_stat` / `mysql_status` | Yes | Yes | We export `mysql_status` |
+| `mysql_unprocessed_queries` | Yes | Yes | In-flight + buffered count |
+| `mysql_log` | Yes | Yes | Runtime level switch (`MYSQL_LOG_*`) |
+| `mysql_tick` | — | Yes | Manual drain. Optional — `on_tick` (rust-samp v3) already pumps the queue automatically |
+| Unix socket | — | Yes | Auto-detected when `host` starts with `/` |
 
 ## Options
 
-| Funcionalidade | R41-4 | mysql_samp | Notas |
+| Feature | R41-4 | mysql_samp | Notes |
 |---|---|---|---|
-| Criar options | `mysql_init_options` | `mysql_options_new` | |
-| Definir opção | `mysql_set_option` (variadic) | `mysql_options_set_int` / `_set_str` | Nosso separa int e str |
-| `mysql_global_options` | Sim | - | Options globais (duplicatas) |
-| AUTO_RECONNECT | Sim | - | |
-| MULTI_STATEMENTS | Sim | - | |
-| POOL_SIZE | Sim | - | Nosso usa Pool interno (2 conns) |
-| SERVER_PORT | Sim | Sim | `MYSQL_OPT_PORT` |
-| SSL_ENABLE | Sim | Sim | `MYSQL_OPT_SSL` |
-| SSL_KEY_FILE | Sim | - | |
-| SSL_CERT_FILE | Sim | - | |
-| SSL_CA_FILE | Sim | Sim | `MYSQL_OPT_SSL_CA` |
-| SSL_CA_PATH | Sim | - | |
-| SSL_CIPHER | Sim | - | |
-| CONNECT_TIMEOUT | - | Sim | Exclusivo nosso |
+| Create handle | `mysql_init_options` | `mysql_options_new` | |
+| Set value | `mysql_set_option` (variadic) | `mysql_options_set_int` / `_set_str` | int and string setters are split |
+| `mysql_global_options` | Yes | — | Global option pool (not supported) |
+| AUTO_RECONNECT | Yes | Yes | `MYSQL_OPT_AUTO_RECONNECT`; one-shot retry on connection-loss errors |
+| MULTI_STATEMENTS | Yes | — | |
+| POOL_SIZE | Yes | — | We use `mysql::Pool` internally; size is not exposed |
+| SERVER_PORT | Yes | Yes | `MYSQL_OPT_PORT` (`u16`; negative or `> 65535` rejected) |
+| SSL_ENABLE | Yes | Accepted **but no-op** | `MYSQL_OPT_SSL` is stored in the options struct; the connection builder does not wire it through to the `mysql` crate yet (TODO in `src/connection.rs:67`) |
+| SSL_KEY_FILE | Yes | — | |
+| SSL_CERT_FILE | Yes | — | |
+| SSL_CA_FILE | Yes | Accepted **but no-op** | `MYSQL_OPT_SSL_CA` — same caveat as `MYSQL_OPT_SSL` |
+| SSL_CA_PATH | Yes | — | |
+| SSL_CIPHER | Yes | — | |
+| CONNECT_TIMEOUT | — | Yes | Exclusive — `MYSQL_OPT_CONNECT_TIMEOUT` (`u32`; negative rejected) |
 
 ## Queries
 
-| Funcionalidade | R41-4 | mysql_samp | Notas |
+| Feature | R41-4 | mysql_samp | Notes |
 |---|---|---|---|
-| `mysql_query` | Sim (sync) | Sim (non-blocking FIFO) | Nosso é sempre threaded, substitui tquery |
-| `mysql_tquery` | Sim | - | Substituído por `mysql_query` (non-blocking) |
-| `mysql_pquery` | Sim | Sim | Query paralela sem ordem |
-| `mysql_query_file` | Sim | - | Query de arquivo SQL |
-| `mysql_tquery_file` | Sim | - | Query threaded de arquivo |
+| `mysql_query` | Yes (sync) | Yes (non-blocking, FIFO) | Always threaded — replaces `tquery` |
+| `mysql_tquery` | Yes | — | Subsumed by `mysql_query` (which is already non-blocking) |
+| `mysql_pquery` | Yes | Yes | Parallel, no ordering guarantee |
+| `mysql_query_file` | Yes | — | Load SQL from a file |
+| `mysql_tquery_file` | Yes | — | Threaded variant of the above |
 
 ## Cache
 
-| Funcionalidade | R41-4 | mysql_samp | Notas |
+| Feature | R41-4 | mysql_samp | Notes |
 |---|---|---|---|
-| `cache_get_row_count` | Sim | Sim | |
-| `cache_get_field_count` | Sim | Sim | |
-| `cache_get_result_count` | Sim | - | Multi-result sets (desnecessário) |
-| `cache_get_field_name` | Sim | Sim | |
-| `cache_get_field_type` | Sim | - | |
-| `cache_set_result` | Sim | - | Multi-result sets (desnecessário) |
-| `cache_get_value_index` | Sim | Sim | String por índice |
-| `cache_get_value_index_int` | Sim | Sim | Int por índice |
-| `cache_get_value_index_float` | Sim | Sim | Float por índice |
-| `cache_is_value_index_null` | Sim | Sim | |
-| `cache_get_value_name` | Sim | Sim | String por nome |
-| `cache_get_value_name_int` | Sim | Sim | Int por nome |
-| `cache_get_value_name_float` | Sim | Sim | Float por nome |
-| `cache_is_value_name_null` | Sim | Sim | |
-| `cache_save` | Sim | Sim | Salva cache para uso posterior |
-| `cache_delete` | Sim | Sim | |
-| `cache_set_active` | Sim | Sim | |
-| `cache_unset_active` | Sim | Sim | |
-| `cache_is_any_active` | Sim | - | Disponível internamente |
-| `cache_is_valid` | Sim | - | Disponível internamente |
-| `cache_affected_rows` | Sim | Sim | |
-| `cache_insert_id` | Sim | Sim | |
-| `cache_warning_count` | Sim | - | Raramente usado |
-| `cache_get_query_exec_time` | Sim | Sim | |
-| `cache_get_query_string` | Sim | Sim | |
+| `cache_get_row_count` | Yes | Yes | |
+| `cache_get_field_count` | Yes | Yes | |
+| `cache_get_result_count` | Yes | — | Multi-result sets (not supported) |
+| `cache_get_field_name` | Yes | Yes | |
+| `cache_get_field_type` | Yes | Yes | Returns the raw `mysql::consts::ColumnType` byte |
+| `cache_set_result` | Yes | — | Multi-result sets (not supported) |
+| `cache_get_value_index` | Yes | Yes | String by index |
+| `cache_get_value_index_int` | Yes | Yes | Int by index |
+| `cache_get_value_index_float` | Yes | Yes | Float by index |
+| `cache_is_value_index_null` | Yes | Yes | |
+| `cache_get_value_name` | Yes | Yes | String by name (case-insensitive) |
+| `cache_get_value_name_int` | Yes | Yes | Int by name |
+| `cache_get_value_name_float` | Yes | Yes | Float by name |
+| `cache_is_value_name_null` | Yes | Yes | |
+| `cache_save` | Yes | Yes | Persists the active entry for later reuse |
+| `cache_delete` | Yes | Yes | |
+| `cache_set_active` | Yes | Yes | |
+| `cache_unset_active` | Yes | Yes | |
+| `cache_is_any_active` | Yes | Yes | |
+| `cache_is_valid` | Yes | Yes | |
+| `cache_affected_rows` | Yes | Yes | |
+| `cache_insert_id` | Yes | Yes | |
+| `cache_warning_count` | Yes | Yes | Reported by the server after each query |
+| `cache_get_query_exec_time` | Yes | Yes | Always in milliseconds |
+| `cache_get_query_string` | Yes | Yes | |
 
 ## ORM
 
-| Funcionalidade | R41-4 | mysql_samp | Notas |
+| Feature | R41-4 | mysql_samp | Notes |
 |---|---|---|---|
-| `orm_create` | Sim | Sim | |
-| `orm_destroy` | Sim | Sim | |
-| `orm_errno` | Sim | Sim | |
-| `orm_apply_cache` | Sim | Sim | |
-| `orm_select` / `orm_load` | Sim | Sim | Non-blocking |
-| `orm_update` | Sim | Sim | Non-blocking |
-| `orm_insert` | Sim | Sim | Non-blocking |
-| `orm_delete` | Sim | Sim | Non-blocking |
-| `orm_save` | Sim | Sim | INSERT se key=0, UPDATE caso contrário |
-| `orm_addvar_int` | Sim | Sim | |
-| `orm_addvar_float` | Sim | Sim | |
-| `orm_addvar_string` | Sim | Sim | |
-| `orm_clear_vars` | Sim | Sim | |
-| `orm_delvar` | Sim | Sim | |
-| `orm_setkey` | Sim | Sim | |
+| `orm_create` | Yes | Yes | |
+| `orm_destroy` | Yes | Yes | |
+| `orm_errno` | Yes | Yes | `ORM_OK` / `ORM_NO_DATA` |
+| `orm_apply_cache` | Yes | Yes | |
+| `orm_select` / `orm_load` | Yes | Yes | Non-blocking |
+| `orm_update` | Yes | Yes | Non-blocking |
+| `orm_insert` | Yes | Yes | Non-blocking |
+| `orm_delete` | Yes | Yes | Non-blocking |
+| `orm_save` | Yes | Yes | INSERT when the key is empty, UPDATE otherwise |
+| `orm_addvar_int` | Yes | Yes | |
+| `orm_addvar_float` | Yes | Yes | |
+| `orm_addvar_string` | Yes | Yes | `var_max_len` capped at `MAX_ORM_STRING_LEN` (4096) |
+| `orm_clear_vars` | Yes | Yes | |
+| `orm_delvar` | Yes | Yes | |
+| `orm_setkey` | Yes | Yes | |
 
-## Callbacks
+## Forwards
 
-| Funcionalidade | R41-4 | mysql_samp | Notas |
+| Feature | R41-4 | mysql_samp | Notes |
 |---|---|---|---|
-| `OnQueryError` | Sim | Sim | Forward chamado em erro de query |
+| `OnQueryError` | Yes | Yes | Fired on every loaded AMX when a threaded query fails |
 
-## Extras (exclusivo mysql_samp)
+## Extras (mysql_samp only)
 
-| Funcionalidade | Notas |
+| Feature | Notes |
 |---|---|
-| Zero dependências externas | Sem libmysqlclient, sem OpenSSL |
-| TLS via rustls | Embutido no binário |
-| `MYSQL_OPT_CONNECT_TIMEOUT` | Timeout de conexão configurável |
-| Logs detalhados em arquivo | `logs/mysql.log` com timestamp |
-| Banner informativo | Data/hora de build |
-| Pool de conexões | `mysql::Pool` para threading seguro |
-| Queries 100% non-blocking | Sem bloqueio do servidor |
-| Limpeza automática de ORM | ORMs destruídos quando AMX descarrega |
+| Zero external runtime dependencies | No `libmysqlclient`, no OpenSSL — `mysql` crate with the `default-rust` feature (rustls bundled) |
+| `MYSQL_OPT_CONNECT_TIMEOUT` | Configurable TCP connect timeout |
+| `MYSQL_SAMP_VERSION` in the include | Version constant available to Pawn for introspection |
+| Detailed file logs | `logs/mysql.log` with timestamp; I/O failure reported once via `samp::log::error!`, then suppressed |
+| Build banner | Date/time stamped by `build.rs` via `BUILD_DATE` / `BUILD_TIME` / `BUILD_YEAR` |
+| Connection pool | `mysql::Pool` (`Clone + Send + Sync`) for safe multi-threaded access |
+| Fully non-blocking queries | Both `mysql_query` (FIFO) and `mysql_pquery` (parallel) run on worker threads |
+| ORM auto-cleanup | `OrmManager::destroy_by_amx` frees instances when their AMX is unloaded |
+| Universal SA-MP + Open Multiplayer binary | The same `.so` / `.dll` runs natively (component) or in legacy mode (`legacy_plugins`) |
+| Unified `on_tick` | Dispatches callbacks via `ProcessTick` (SA-MP) and `ITimersComponent` (Open Multiplayer native), no Pawn `SetTimer` required |
+| `mysql_format` safe truncation | Truncates at the destination buffer boundary respecting UTF-8 char boundaries; warns once per call |
+| Strict integer conversions | Every cross-width / sign-changing conversion goes through `TryFrom` / `From`; no silent wrap from `as` |
+| 113 unit tests | Cover the entire pure surface (parser, renderer, escape, cache, ORM, query reordering) |
+
+## Totals
+
+| Category | R41-4 | mysql_samp |
+|---|---|---|
+| Pawn natives | — | **55** |
+| Pawn forwards | — | **1** |
+| Plugin error codes (`MYSQL_ERROR_*`) | — | 9 (`MYSQL_OK` + 8) |
+| Connection options (`MYSQL_OPT_*`) | many | 5 (3 wired + 2 no-op SSL) |
+| Log levels (`MYSQL_LOG_*`) | bitflags | 5 sequential |
+| ORM error codes (`ORM_*`) | 3 | 2 |

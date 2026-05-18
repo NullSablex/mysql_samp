@@ -34,6 +34,7 @@ initialize_plugin!(
         // Query
         MysqlPlugin::mysql_query,
         MysqlPlugin::mysql_pquery,
+        MysqlPlugin::mysql_tick,
         MysqlPlugin::mysql_escape_string,
         MysqlPlugin::mysql_format,
         // Cache
@@ -78,7 +79,7 @@ initialize_plugin!(
         MysqlPlugin::orm_setkey,
     ],
     {
-        samp::plugin::enable_process_tick();
+        samp::plugin::enable_tick();
         return MysqlPlugin::new();
     }
 );

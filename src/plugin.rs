@@ -1,4 +1,5 @@
 use samp::amx::AmxIdent;
+use samp::plugin::TickContext;
 use samp::prelude::*;
 
 use crate::cache::CacheManager;
@@ -34,7 +35,7 @@ impl MysqlPlugin {
     }
 
     /// Processes completed threaded queries and dispatches callbacks.
-    fn process_pending_queries(&mut self) {
+    pub fn process_pending_queries(&mut self) {
         let results = self.queries.poll_results();
 
         for result in results {
@@ -57,15 +58,12 @@ impl MysqlPlugin {
                 // Update the per-connection error state
                 self.connections.set_error(
                     result.conn_id,
-                    ErrorState::new(
-                        MysqlError::QueryFailed,
-                        error.message.clone(),
-                    ),
+                    ErrorState::new(MysqlError::QueryFailed, error.message.clone()),
                 );
 
                 callback::fire_on_query_error(
                     &self.amx_list,
-                    error.code as i32,
+                    i32::from(error.code),
                     &error.message,
                     callback_name,
                     result.cache.query_string(),
@@ -110,7 +108,22 @@ impl SampPlugin for MysqlPlugin {
         self.orm.destroy_by_amx(ident);
     }
 
-    fn process_tick(&mut self) {
+    /// Unified tick callback (v3.0.0+): fires on both SA-MP (ProcessTick) and
+    /// Open Multiplayer native mode (ITimersComponent timer). Drives query
+    /// dispatch automatically — no Pawn timer required anymore.
+    fn on_tick(&mut self, _ctx: TickContext) {
         self.process_pending_queries();
+    }
+
+    fn on_omp_ready(&mut self) {
+        Logger::info("Open Multiplayer native mode: all components ready.");
+    }
+
+    /// Fires when any Open Multiplayer component is being released (not just
+    /// ours). We don't query other components, so there's nothing to
+    /// invalidate — the log line just helps correlate "mysql_samp misbehaved
+    /// after plugin X was unloaded" reports.
+    fn on_component_free(&mut self) {
+        Logger::info("Open Multiplayer: a neighbouring component is being unloaded.");
     }
 }

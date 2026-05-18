@@ -1,40 +1,46 @@
 # Cache
 
-O sistema de cache armazena os resultados das queries. Quando um callback de query e chamado, o cache da query fica automaticamente disponivel para leitura.
+The cache holds the result of a single query so that the `cache_*` natives can read it. There are two ways a cache becomes "active":
 
-## Ciclo de vida do cache
-
-1. Uma query e executada na thread
-2. O resultado e armazenado em um `CacheEntry`
-3. No `process_tick`, o cache e empilhado (**push**)
-4. O callback e chamado — dentro dele, as funcoes `cache_*` acessam o resultado
-5. Apos o callback retornar, o cache e desempilhado (**pop**)
+1. **Automatic stack.** Before a query callback fires, the plugin pushes the result onto an internal stack. When the callback returns, the entry is popped. Inside the callback, every `cache_*` native reads from the top of the stack.
+2. **Manual activation.** `cache_save()` clones the active entry into a persistent slot identified by an id. Later, `cache_set_active(id)` makes the saved entry override the stack top until `cache_unset_active()` is called.
 
 ```
-mysql_query → [thread] → resultado → push cache → callback() → pop cache
+mysql_query → worker thread → result → push → callback() → pop
 ```
 
-> Fora de um callback de query, as funcoes `cache_*` retornam valores de erro (-1, false, 0.0) a menos que voce use `cache_set_active` com um cache salvo.
+Outside a callback (and without `cache_set_active`), the cache natives return their "no active cache" sentinels:
 
-## Leitura de resultados
+| Native shape | Sentinel |
+|---|---|
+| `cache_get_*` returning `int` | `-1` |
+| `cache_get_*_int` | `0` |
+| `cache_get_*_float` | `0.0` |
+| `cache_get_*` writing to `dest` | `false`, `dest` untouched |
+| `cache_is_value_*_null` | `true` (treat absence as NULL) |
 
-### Dimensoes
+## Reading rows
+
+### Dimensions
 
 ```pawn
-native cache_get_row_count();     // Numero de linhas (-1 se sem cache)
-native cache_get_field_count();   // Numero de colunas (-1 se sem cache)
+native cache_get_row_count();
+native cache_get_field_count();
 ```
+
+Both return `-1` when no cache is active.
 
 ```pawn
 forward OnQueryDone();
-public OnQueryDone() {
-    new rows = cache_get_row_count();
+public OnQueryDone()
+{
+    new rows   = cache_get_row_count();
     new fields = cache_get_field_count();
-    printf("Resultado: %d rows x %d fields", rows, fields);
+    printf("result: %d rows x %d fields", rows, fields);
 }
 ```
 
-### Valor por indice (row, col)
+### By column index
 
 ```pawn
 native bool:cache_get_value_index(row, col, dest[], max_len = sizeof(dest));
@@ -42,20 +48,24 @@ native cache_get_value_index_int(row, col);
 native Float:cache_get_value_index_float(row, col);
 ```
 
+`row` and `col` are zero-based and must be non-negative. Negative values are rejected without touching `dest`. Out-of-range or NULL cells return `false` / `0` / `0.0`.
+
 ```pawn
 forward OnResult();
-public OnResult() {
+public OnResult()
+{
     new rows = cache_get_row_count();
-    for (new i = 0; i < rows; i++) {
+    for (new i = 0; i < rows; i++)
+    {
         new id = cache_get_value_index_int(i, 0);
         new name[64];
         cache_get_value_index(i, 1, name);
-        printf("ID: %d, Nome: %s", id, name);
+        printf("id=%d name=%s", id, name);
     }
 }
 ```
 
-### Valor por nome de coluna (row, field_name)
+### By column name
 
 ```pawn
 native bool:cache_get_value_name(row, const field_name[], dest[], max_len = sizeof(dest));
@@ -63,169 +73,155 @@ native cache_get_value_name_int(row, const field_name[]);
 native Float:cache_get_value_name_float(row, const field_name[]);
 ```
 
+The column lookup is **case-insensitive**: `"name"`, `"Name"` and `"NAME"` all match the same column.
+
 ```pawn
 forward OnPlayerData();
-public OnPlayerData() {
-    if (cache_get_row_count() > 0) {
-        new name[MAX_PLAYER_NAME];
-        cache_get_value_name(0, "username", name);
+public OnPlayerData()
+{
+    if (cache_get_row_count() <= 0) return;
 
-        new level = cache_get_value_name_int(0, "level");
-        new Float:score = cache_get_value_name_float(0, "score");
+    new name[MAX_PLAYER_NAME];
+    cache_get_value_name(0, "username", name);
 
-        printf("%s - Level %d - Score %.2f", name, level, score);
-    }
+    new level = cache_get_value_name_int(0, "level");
+    new Float:score = cache_get_value_name_float(0, "score");
+
+    printf("%s — level %d — score %.2f", name, level, score);
 }
 ```
 
-> A busca por nome e case-insensitive: `"Username"`, `"username"` e `"USERNAME"` funcionam igualmente.
-
-### Verificacao de NULL
+### NULL checks
 
 ```pawn
 native bool:cache_is_value_index_null(row, col);
 native bool:cache_is_value_name_null(row, const field_name[]);
 ```
 
+Returns `true` when the cell is SQL `NULL`, **also** when the row/column is out of bounds or no cache is active. The "no cache" → `true` mapping means downstream code that just wants to skip empty cells does not need an extra guard, but if you need to distinguish "missing row" from "NULL cell" check `cache_get_row_count()` first.
+
 ```pawn
-if (!cache_is_value_name_null(0, "email")) {
+if (!cache_is_value_name_null(0, "email"))
+{
     new email[128];
     cache_get_value_name(0, "email", email);
-    printf("Email: %s", email);
-} else {
-    printf("Email nao definido");
+    printf("email: %s", email);
 }
 ```
 
-## Metadados
+## Metadata
 
-### Colunas
+### Columns
 
 ```pawn
 native bool:cache_get_field_name(field_idx, dest[], max_len = sizeof(dest));
-native cache_get_field_type(field_idx);   // Tipo MySQL (ver mysql_com.h)
-native cache_get_field_count();
+native cache_get_field_type(field_idx);
 ```
+
+`cache_get_field_type` returns the raw MySQL column-type byte (`mysql::consts::ColumnType` as a `u8`). For example: `3` = `MYSQL_TYPE_LONG`, `253` = `MYSQL_TYPE_VAR_STRING`. Returns `-1` for out-of-range indices.
 
 ```pawn
 new fields = cache_get_field_count();
-for (new i = 0; i < fields; i++) {
+for (new i = 0; i < fields; i++)
+{
     new name[64];
     cache_get_field_name(i, name);
-    printf("Coluna %d: %s (tipo %d)", i, name, cache_get_field_type(i));
+    printf("col %d: %s (type=%d)", i, name, cache_get_field_type(i));
 }
 ```
 
-### Resultados de escrita (INSERT/UPDATE/DELETE)
+### Write-result metadata
 
 ```pawn
-native cache_affected_rows();    // Linhas afetadas
-native cache_insert_id();        // Last insert ID (auto_increment)
-native cache_warning_count();    // Warnings do MySQL
+native cache_affected_rows();      // -1 if no cache, otherwise rows affected
+native cache_insert_id();          // -1 if no cache, otherwise last AUTO_INCREMENT
+native cache_warning_count();      // -1 if no cache, otherwise warnings from the server
 ```
 
 ```pawn
 forward OnPlayerInserted();
-public OnPlayerInserted() {
-    new id = cache_insert_id();
-    printf("Novo jogador inserido com ID: %d", id);
+public OnPlayerInserted()
+{
+    printf("new player id: %d", cache_insert_id());
 }
 
 forward OnPlayersDeleted();
-public OnPlayersDeleted() {
-    printf("Jogadores removidos: %d", cache_affected_rows());
+public OnPlayersDeleted()
+{
+    printf("rows deleted: %d", cache_affected_rows());
 }
 ```
 
-### Debug
+### Query metadata
 
 ```pawn
-native cache_get_query_exec_time();   // Tempo de execucao em ms
-native bool:cache_get_query_string(dest[], max_len = sizeof(dest));
+native cache_get_query_exec_time();                                  // milliseconds, -1 if no cache
+native bool:cache_get_query_string(dest[], max_len = sizeof(dest));  // the SQL text actually executed
 ```
 
+The exec time is computed by the worker thread, so it includes the round-trip to the MySQL server but not the dispatch delay back to the callback.
+
 ```pawn
-printf("Query executada em %d ms", cache_get_query_exec_time());
+printf("query took %d ms", cache_get_query_exec_time());
 
 new query[512];
 cache_get_query_string(query);
-printf("Query: %s", query);
+printf("query: %s", query);
 ```
 
-## Cache persistente (save/restore)
+## Persistent caches
 
-Por padrao, o cache e destruido apos o callback. Use `cache_save` para preservar o resultado.
-
-### cache_save
+By default the cache is dropped when the callback returns. To keep a result around, save it:
 
 ```pawn
-native cache_save();   // Retorna cache_id (>= 1) ou 0 se falhar
-```
-
-### cache_delete
-
-```pawn
+native cache_save();                       // returns the saved id (>= 1) or 0 on failure
 native bool:cache_delete(cache_id);
-```
-
-### cache_set_active / cache_unset_active
-
-Ativa manualmente um cache salvo. Enquanto ativo, todas as funcoes `cache_*` leem deste cache.
-
-```pawn
 native bool:cache_set_active(cache_id);
 native bool:cache_unset_active();
+native bool:cache_is_any_active();
+native bool:cache_is_valid(cache_id);
 ```
 
-### Exemplo completo
+`cache_save()` returns `0` when no cache is active or when the saved-cache limit (1024) is reached.
 
 ```pawn
-new gSavedCache;
+new g_saved;
 
 forward OnDataLoaded();
-public OnDataLoaded() {
-    // Salva o cache para uso posterior
-    gSavedCache = cache_save();
-    printf("Cache salvo com ID: %d", gSavedCache);
+public OnDataLoaded()
+{
+    g_saved = cache_save();
+    printf("cache saved id=%d", g_saved);
 }
 
-// Em outro momento...
-stock UseSavedData() {
-    if (!cache_is_valid(gSavedCache)) {
-        printf("Cache expirado!");
+stock UseSavedData()
+{
+    if (!cache_is_valid(g_saved))
+    {
+        printf("cache expired");
         return;
     }
 
-    cache_set_active(gSavedCache);
-
+    cache_set_active(g_saved);
     new rows = cache_get_row_count();
-    printf("Dados salvos: %d rows", rows);
-
-    // ... ler dados ...
-
+    printf("saved cache has %d rows", rows);
     cache_unset_active();
 }
 
-// Quando nao precisar mais
-stock CleanupCache() {
-    cache_delete(gSavedCache);
-    gSavedCache = 0;
+stock DropSavedData()
+{
+    cache_delete(g_saved);
+    g_saved = 0;
 }
 ```
 
-### Verificacao de estado
+`cache_delete` also clears the manual override if the deleted id is currently active. `cache_unset_active` returns `false` if there is no manual override to clear (the stack-top behavior continues normally).
 
-```pawn
-native bool:cache_is_any_active();    // Algum cache esta ativo?
-native bool:cache_is_valid(cache_id); // O cache salvo ainda existe?
-```
+## Limits
 
-## Limites
+| Resource | Limit | What happens when hit |
+|---|---|---|
+| Saved caches | 1 024 | `cache_save()` returns `0`, warning logged |
+| Rows per query result | 100 000 | Extra rows are drained from the protocol but discarded; one warning is logged |
 
-| Limite | Valor |
-|---|---|
-| Caches salvos simultaneos | 1024 |
-| Rows por resultado | 100.000 |
-
-Se o limite de caches salvos for atingido, `cache_save` retorna `0` e um warning e logado.
-Resultados com mais de 100.000 rows sao truncados automaticamente com warning.
+The 100k-row limit prevents a single runaway `SELECT *` from blowing the server's memory.

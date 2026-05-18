@@ -7,23 +7,61 @@ on:
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
+      - 'docs/requirements.txt'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'docs/requirements.txt'
+      - '.github/workflows/docs.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  deploy:
+  build:
+    name: Build site
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.x'
+          cache: pip
+          cache-dependency-path: docs/requirements.txt
 
-      - name: Instalar MkDocs
-        run: pip install mkdocs-material
+      - name: Install MkDocs and theme
+        run: pip install -r docs/requirements.txt
 
-      - name: Deploy GitHub Pages
-        run: mkdocs gh-deploy --force
+      - name: Strict build (fails on warnings)
+        run: mkdocs build --strict
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    # `mkdocs gh-deploy` pushes to the gh-pages branch.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+          cache: pip
+          cache-dependency-path: docs/requirements.txt
+
+      - name: Install MkDocs and theme
+        run: pip install -r docs/requirements.txt
+
+      - name: Deploy
+        run: mkdocs gh-deploy --force --clean
