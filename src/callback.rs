@@ -34,17 +34,13 @@ pub fn invoke_callback(amx_list: &[AmxIdent], info: &CallbackInfo) {
             };
 
             match (ch, param) {
-                ('d' | 'i', CallbackParam::Int(v)) => {
-                    if amx.push(*v).is_err() {
-                        push_ok = false;
-                        break;
-                    }
+                ('d' | 'i', CallbackParam::Int(v)) if amx.push(*v).is_err() => {
+                    push_ok = false;
+                    break;
                 }
-                ('f', CallbackParam::Float(v)) => {
-                    if amx.push(*v).is_err() {
-                        push_ok = false;
-                        break;
-                    }
+                ('f', CallbackParam::Float(v)) if amx.push(*v).is_err() => {
+                    push_ok = false;
+                    break;
                 }
                 ('s', CallbackParam::String(v)) => match allocator.allot_string(v) {
                     Ok(s) => {
