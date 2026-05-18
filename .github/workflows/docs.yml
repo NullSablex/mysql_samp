@@ -20,6 +20,13 @@ on:
 permissions:
   contents: read
 
+# Only one Pages deployment can run at a time. Cancelling a queued
+# deployment in favour of a newer one is fine; cancelling one already
+# in flight would orphan a partial deploy, so we let it finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Build site
@@ -41,27 +48,28 @@ jobs:
       - name: Strict build (fails on warnings)
         run: mkdocs build --strict
 
+      # Upload the generated site so the deploy job (or anyone debugging
+      # a PR) can grab it. Uses the dedicated Pages artifact format.
+      - name: Upload Pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
   deploy:
     name: Deploy to GitHub Pages
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    # `mkdocs gh-deploy` pushes to the gh-pages branch.
+    # `actions/deploy-pages` needs `pages: write` to publish and
+    # `id-token: write` for OIDC verification of the artifact.
     permissions:
-      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.x'
-          cache: pip
-          cache-dependency-path: docs/requirements.txt
-
-      - name: Install MkDocs and theme
-        run: pip install -r docs/requirements.txt
-
-      - name: Deploy
-        run: mkdocs gh-deploy --force --clean
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
