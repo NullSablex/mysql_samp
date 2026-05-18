@@ -1,6 +1,6 @@
 [package]
 name = "mysql_samp"
-version = "1.1.0"
+version = "1.1.1"
 edition = "2024"
 authors = ["NullSablex <https://github.com/NullSablex>"]
 repository = "https://github.com/NullSablex/mysql_samp"

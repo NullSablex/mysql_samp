@@ -1,5 +1,5 @@
 /*
- * mysql_samp v1.1.0 - MySQL plugin for SA-MP and Open Multiplayer.
+ * mysql_samp v1.1.1 - MySQL plugin for SA-MP and Open Multiplayer.
  * Author:     NullSablex
  * Repository: https://github.com/NullSablex/mysql_samp
  * License:    GPL-3.0
@@ -10,7 +10,7 @@
 #endif
 #define _mysql_samp_included
 
-#define MYSQL_SAMP_VERSION "1.1.0"
+#define MYSQL_SAMP_VERSION "1.1.1"
 
 // Connection options
 enum {

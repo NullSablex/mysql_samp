@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 Format inspired by [Keep a Changelog](https://keepachangelog.com/). Versioning follows [Semantic Versioning](https://semver.org/). Older entries live under [`changelog/`](changelog/).
 
+## [1.1.1] — 2026/05/18
+
+### Fixed
+
+- `MYSQL_OPT_SSL` and `MYSQL_OPT_SSL_CA` are now wired through to the connection builder. When `MYSQL_OPT_SSL` is enabled, `mysql_connect` configures `SslOpts::default()` on the pool (rustls). When `MYSQL_OPT_SSL_CA` is also set, its path is passed to `with_root_cert_path`; otherwise the platform trust store is used. Previously both options were accepted but silently ignored, so connections were always plaintext.
+
+---
+
 ## [1.1.0] — 2026/05/18
 
 Built on top of [rust-samp v3.0.0](https://github.com/NullSablex/rust-samp/releases/tag/v3.0.0). The same `.so` / `.dll` now loads on SA-MP and on Open Multiplayer (native component or legacy mode). No Pawn-visible API was removed or renamed.
