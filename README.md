@@ -1,6 +1,6 @@
 # mysql_samp
 
-> MySQL plugin for SA-MP written in Rust — by [NullSablex](https://github.com/NullSablex)
+> MySQL plugin for SA-MP and Open Multiplayer, written in Rust — by [NullSablex](https://github.com/NullSablex)
 
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 ![SA-MP](https://img.shields.io/badge/SA--MP-0.3.7+-orange)
@@ -42,8 +42,8 @@ The same binary loads on SA-MP and on Open Multiplayer — natively as a compone
      plugins mysql_samp.so
      ```
      (or `mysql_samp.dll` on Windows)
-   - **Open Multiplayer (native, recommended)** — list the binary under `components` in `config.json`. It will be loaded via `ComponentEntryPoint`, with access to `ICore`, `ITimersComponent` and the other native APIs.
-   - **Open Multiplayer (legacy)** — still supported. Register the binary under `legacy_plugins` in `config.json` if you prefer the SA-MP compatibility path. Same binary, no extra build flags.
+   - **Open Multiplayer (native, recommended)** — drop the binary into the `components/` folder. open.mp auto-discovers it on start and loads it via `ComponentEntryPoint`, with access to `ICore`, `ITimersComponent` and the other native APIs. No `config.json` entry required.
+   - **Open Multiplayer (legacy)** — same binary works as a legacy plugin. Drop it into `plugins/` and add it to `legacy_plugins` in `config.json` (this one DOES need to be declared, otherwise open.mp skips legacy plugins).
 
 > [!IMPORTANT]
 > No `libmysqlclient` or other system library is required. The plugin is self-contained.
@@ -85,6 +85,8 @@ public OnGameModeExit() {
     return 1;
 }
 ```
+
+Browse the [examples/](examples/) folder for self-contained `.pwn` scripts covering connection setup, threaded queries, ORM, TLS and error handling. The plugin natives (`mysql_*`, `cache_*`, `orm_*`) and the `OnQueryError` forward are identical across SA-MP and Open Multiplayer, so every example builds and runs on both — the only thing that differs between servers is the installation path documented above.
 
 ## Documentation
 

@@ -33,7 +33,7 @@ plugins mysql_samp.so
 
 ### Open Multiplayer — native mode (recommended)
 
-Drop the binary into `components/` (open.mp folder) and register it under `components` in `config.json`. The plugin is loaded via `ComponentEntryPoint` and gets access to `ICore`, `ITimersComponent` and the other native APIs.
+Drop the binary into the `components/` folder. open.mp auto-discovers and loads it via `ComponentEntryPoint` on start, with access to `ICore`, `ITimersComponent` and the other native APIs. No `config.json` entry is required — native components are discovered by scanning the folder, not by declaration.
 
 ### Open Multiplayer — legacy mode
 
