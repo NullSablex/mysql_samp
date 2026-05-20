@@ -1,6 +1,6 @@
 # Checklist: mysql_samp vs MySQL R41-4
 
-Coverage of the MySQL R41-4 (BlueG / maddinat0r) Pawn API by **mysql_samp 1.1.1**. Source of truth: [`include/mysql_samp.inc.in`](include/mysql_samp.inc.in) and [`src/lib.rs`](src/lib.rs).
+Coverage of the MySQL R41-4 (BlueG / maddinat0r) Pawn API by **mysql_samp**. Source of truth: [`include/mysql_samp.inc.in`](include/mysql_samp.inc.in) and [`src/lib.rs`](src/lib.rs). Current plugin version lives in [`Cargo.toml`](Cargo.toml).
 
 ## Connection
 
