@@ -18,7 +18,7 @@ Built on top of [rust-samp v3.0.0](https://github.com/NullSablex/rust-samp/relea
 
 ### Added
 
-- **Universal binary.** A single artifact runs on SA-MP and on Open Multiplayer. Open Multiplayer can load it as a native component (registered under `components` in `config.json`) or in legacy mode (registered under `legacy_plugins`).
+- **Universal binary.** A single artifact runs on SA-MP and on Open Multiplayer. Open Multiplayer auto-loads it as a native component when dropped into the `components/` folder (no `config.json` entry needed — the folder itself is the registration), or in legacy mode when dropped into `plugins/` and declared under `pawn.legacy_plugins` in `config.json`.
 - `mysql_tick()` — drains the dispatch queue manually. Kept for backwards compatibility only; with rust-samp v3 the unified `on_tick` callback already pumps the queue on both SA-MP (`ProcessTick`) and Open Multiplayer (`ITimersComponent`, 5 ms by default).
 - `MYSQL_SAMP_VERSION` constant in `mysql_samp.inc` — string with the plugin version, auto-generated from `CARGO_PKG_VERSION` by `build.rs`.
 - `on_component_free` lifecycle hook — emits a single informational log line when any neighbouring Open Multiplayer component is released. Useful when correlating "mysql_samp misbehaved after plugin X was unloaded" reports.
