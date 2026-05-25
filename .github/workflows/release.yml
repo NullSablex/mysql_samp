@@ -99,9 +99,9 @@ jobs:
           ### Compatibility
           The binaries are **universal**: they run on SA-MP and on Open Multiplayer, on Linux and Windows alike.
 
-          - **SA-MP**: register under \`plugins=\` in \`server.cfg\`.
-          - **Open Multiplayer (native mode, recommended)**: register as a component under \`components\` in \`config.json\`. Loaded via \`ComponentEntryPoint\`, with access to \`ICore\`, \`ITimersComponent\` and the remaining native APIs.
-          - **Open Multiplayer (legacy mode)**: still supported — register under \`legacy_plugins\` (or the equivalent key in your \`config.json\`) if you prefer the SA-MP compat path over the native component. Same binary, no extra build flags.
+          - **SA-MP**: drop the binary into \`plugins/\` and register it under \`plugins=\` in \`server.cfg\`.
+          - **Open Multiplayer (native mode, recommended)**: drop the binary into the server's \`components/\` folder. It is loaded automatically via \`ComponentEntryPoint\`, with access to \`ICore\`, \`ITimersComponent\` and the remaining native APIs. No \`config.json\` entry is required.
+          - **Open Multiplayer (legacy mode)**: drop the binary into \`plugins/\` and declare it under \`pawn.legacy_plugins\` in \`config.json\`. Same binary, no extra build flags.
           EOF
 
           if [ -n "${CHANGELOG_SECTION}" ]; then
