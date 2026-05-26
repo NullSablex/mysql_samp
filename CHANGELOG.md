@@ -10,8 +10,6 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/). Versioning f
 
 - `MYSQL_OPT_SSL` and `MYSQL_OPT_SSL_CA` are now wired through to the connection builder. When `MYSQL_OPT_SSL` is enabled, `mysql_connect` configures `SslOpts::default()` on the pool (rustls). When `MYSQL_OPT_SSL_CA` is also set, its path is passed to `with_root_cert_path`; otherwise the platform trust store is used. Previously both options were accepted but silently ignored, so connections were always plaintext.
 
----
-
 ## [1.1.0] — 2026/05/18
 
 Built on top of [rust-samp v3.0.0](https://github.com/NullSablex/rust-samp/releases/tag/v3.0.0). The same `.so` / `.dll` now loads on SA-MP and on Open Multiplayer (native component or legacy mode). No Pawn-visible API was removed or renamed.
@@ -71,8 +69,6 @@ Built on top of [rust-samp v3.0.0](https://github.com/NullSablex/rust-samp/relea
 - `samp` switched from a local path dependency to git (`tag = "v3.0.0"`).
 - `log` removed as a direct dependency (re-exported by `samp`).
 - GitHub Actions bumped to the current major: `actions/checkout` v4 → v6, `actions/setup-python` v5 → v6, `actions/cache` v4 → v5, `actions/upload-artifact` v4 → v7, `softprops/action-gh-release` v2 → v3, `rustsec/audit-check` v2.0.0 → v2 (floats within the major for patches).
-
----
 
 ## [1.0.0] — 2026/03/09
 
@@ -156,8 +152,6 @@ First stable release. Added ORM, cache, threaded query pipeline, full safety net
 - **CWE-190** — id counters use `wrapping_add(...).max(1)` in every manager.
 - UTF-8 forced via `SET NAMES utf8mb4` on every pool connection — blocks multi-byte escape-bypass attacks.
 - Auto reconnect retries dropped connections once before reporting through `OnQueryError`.
-
----
 
 ## Historical releases
 

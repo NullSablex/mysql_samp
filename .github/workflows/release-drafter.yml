@@ -1,0 +1,16 @@
+name: Release Drafter
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled]
+
+jobs:
+  update-release-draft:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # create/update release draft
+      pull-requests: read  # read PR titles and labels to generate the notes
+    steps:
+      - uses: release-drafter/release-drafter@v7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

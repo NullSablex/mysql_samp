@@ -1,8 +1,9 @@
 name: Release
 
 on:
-  release:
-    types: [published, prereleased]
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: read
@@ -14,13 +15,14 @@ env:
 jobs:
   build-release:
     runs-on: ubuntu-latest
-    # Needs write access to attach .so/.dll/.inc to the GitHub release
-    # and to amend the release body with the auto-generated notes.
+    # Needs write access to create the release and upload .so/.dll/.inc.
     permissions:
       contents: write
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0   # full history so the generate-notes API can list every commit
 
       - name: Verify Cargo.toml version matches release tag
         run: |
@@ -70,57 +72,76 @@ jobs:
           cp "target/i686-pc-windows-msvc/release/${PLUGIN_NAME}.dll"     "dist/${PLUGIN_NAME}.dll"
           cp "include/${PLUGIN_NAME}.inc"                                 "dist/${PLUGIN_NAME}.inc"
 
-      - name: Generate release notes
+      - name: Build release body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          SDK_VERSION="$(grep -oP 'tag\s*=\s*"\Kv[0-9][^"]*' Cargo.toml | head -n1)"
-          PLUGIN_VERSION="$(grep -m1 '^version' Cargo.toml | sed 's/.*= *"\(.*\)"/\1/')"
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
 
-          # Extract the section for the current version from CHANGELOG.md.
-          # Format: "## [X.Y.Z] — yyyy/mm/dd" up to the next "## " heading.
-          CHANGELOG_SECTION=""
-          if [ -f CHANGELOG.md ]; then
-            CHANGELOG_SECTION="$(awk -v ver="${PLUGIN_VERSION}" '
-              $0 ~ "^## \\[" ver "\\]" { capture = 1; next }
-              capture && /^## / { exit }
-              capture { print }
-            ' CHANGELOG.md)"
+          # 1. Curated section from CHANGELOG.md — headlines, migration notes,
+          # breaking changes. Everything that humans wrote and the API cannot
+          # infer from PR titles alone.
+          BODY=$(awk "/^## \[?v?${VERSION}\]?/{found=1; next} found && /^## /{exit} found{print}" CHANGELOG.md)
+          if [ -z "$BODY" ]; then
+            BODY="See [CHANGELOG.md](CHANGELOG.md) for details."
           fi
 
-          cat > release_body.md <<EOF
-          ## ${PLUGIN_NAME} v${PLUGIN_VERSION}
+          # 2. Auto-generated notes — used only to borrow the "New Contributors"
+          # block and the "Full Changelog" comparison link that GitHub computes
+          # natively. The "## What's Changed" categorisation produced here is
+          # dropped on purpose; the CHANGELOG already does that job with more
+          # context.
+          AUTO=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="$TAG" \
+            -q .body 2>/dev/null || echo "")
 
-          Built on top of [rust-samp ${SDK_VERSION}](https://github.com/NullSablex/rust-samp/releases/tag/${SDK_VERSION}).
+          # Everything from "## New Contributors" onwards already includes the
+          # "Full Changelog" link as its last line. Fall back to just the link
+          # if no first-time contributors were detected.
+          APPENDIX=$(echo "$AUTO" | sed -n '/^## New Contributors$/,$p')
+          if [ -z "$APPENDIX" ]; then
+            APPENDIX=$(echo "$AUTO" | grep '^\*\*Full Changelog\*\*' | tail -1)
+          fi
 
+          # 3. Artifact orientation footer — what each downloadable file is,
+          # plus a pointer to the installation docs. Kept at the bottom so it
+          # doesn't push the actual release notes below the fold.
+          FOOTER=$(cat <<EOF
           ### Artifacts
+
           - \`${PLUGIN_NAME}.so\` — Linux i686 (\`i686-unknown-linux-gnu\`).
           - \`${PLUGIN_NAME}.dll\` — Windows i686 (\`i686-pc-windows-msvc\`).
           - \`${PLUGIN_NAME}.inc\` — Pawn include, identical file for SA-MP and Open Multiplayer.
 
-          ### Compatibility
-          The binaries are **universal**: they run on SA-MP and on Open Multiplayer, on Linux and Windows alike.
-
-          - **SA-MP**: drop the binary into \`plugins/\` and register it under \`plugins=\` in \`server.cfg\`.
-          - **Open Multiplayer (native mode, recommended)**: drop the binary into the server's \`components/\` folder. It is loaded automatically via \`ComponentEntryPoint\`, with access to \`ICore\`, \`ITimersComponent\` and the remaining native APIs. No \`config.json\` entry is required.
-          - **Open Multiplayer (legacy mode)**: drop the binary into \`plugins/\` and declare it under \`pawn.legacy_plugins\` in \`config.json\`. Same binary, no extra build flags.
+          The same \`.so\` / \`.dll\` runs on SA-MP and on Open Multiplayer (native component or legacy). Installation paths: see [\`docs/installation.md\`](https://github.com/${GITHUB_REPOSITORY}/blob/master/docs/installation.md).
           EOF
+          )
 
-          if [ -n "${CHANGELOG_SECTION}" ]; then
-            {
+          {
+            echo "$BODY"
+            if [ -n "$APPENDIX" ]; then
               echo ""
-              echo "### Changelog"
+              echo "---"
               echo ""
-              echo "${CHANGELOG_SECTION}"
-            } >> release_body.md
-          fi
+              echo "$APPENDIX"
+            fi
+            echo ""
+            echo "---"
+            echo ""
+            echo "$FOOTER"
+          } > release_body.md
 
           cat release_body.md
 
-      - name: Upload release assets
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
+          name: ${{ github.ref_name }}
           body_path: release_body.md
-          append_body: true
           files: |
             dist/${{ env.PLUGIN_NAME }}.so
             dist/${{ env.PLUGIN_NAME }}.dll
             dist/${{ env.PLUGIN_NAME }}.inc
+          draft: false
+          prerelease: false
