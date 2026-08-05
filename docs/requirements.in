@@ -1,0 +1,12 @@
+# Top-level documentation dependencies. The MkDocs Material theme pulls in
+# mkdocs and pymdown-extensions transitively. Recompile the hash-pinned
+# lockfile after editing this file:
+#
+#   pip-compile --generate-hashes --output-file=docs/requirements.txt docs/requirements.in
+#
+# The lockfile is installed with `pip install --require-hashes`, so every
+# package is verified against a known digest before it runs in CI.
+mkdocs-material==9.7.6
+# Floor above the transitive default: pulls the fix for CVE-2026-61632
+# (path traversal in the b64 extension). mkdocs-material only requires >=10.2.
+pymdown-extensions>=11.0.0
