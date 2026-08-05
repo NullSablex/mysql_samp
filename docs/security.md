@@ -150,15 +150,51 @@ The callback dispatcher checks every step:
 
 The server cannot crash because of a malformed callback format string — at worst the callback is skipped and a warning is logged.
 
-## Console hygiene
+## What reaches the logs
 
-`logs/mysql.log` gets full detail. The server console gets a short, sanitized message with the error code only. The console never prints:
+Worth knowing precisely, because "the query text ends up in the log" is a common assumption and it is not what happens here.
+
+### The plugin never logs query text
+
+`logs/mysql.log` gets full detail, the server console gets a short sanitized line with the error code only. Neither receives the SQL. On a failed query the plugin logs the **server's error message**, not the statement that produced it.
+
+The console never prints:
 
 - SQL query text
 - Credentials or hostnames
 - Row data
 
-If the log file cannot be written, the plugin emits one console error (`Failed to write logs/mysql.log: …`) and then suppresses further file-write attempts to avoid flooding the console.
+If the log file cannot be written, the plugin emits one console error and then suppresses further file-write attempts to avoid flooding the console.
+
+### The two places a query can still surface
+
+1. **MySQL's own error text.** For a syntax error the server echoes a fragment of the statement back (`… check the manual … near '…' at line 1`), and that message *is* logged. It is a fragment, from the server, only on a query that failed — not the full statement.
+
+2. **`OnQueryError` hands your gamemode the complete query.** The `query` parameter carries the full text. If your handler prints it:
+
+    ```pawn
+    public OnQueryError(errorid, const error[], const callback[], const query[], connId)
+    {
+        printf("  query: %s", query);   // this goes to the console and server_log.txt
+    }
+    ```
+
+    then the whole statement lands in the server log — including any value interpolated by `mysql_format`. That is your gamemode's choice, not the plugin's. Log the `callback` name and `errorid` instead when the statement may carry sensitive data.
+
+### Do not use the log level for privacy
+
+`mysql_log(MYSQL_LOG_NONE)` does suppress the lines above, because they are emitted at `ERROR`. It is a bad trade: you lose the diagnosis of every failed query to hide a fragment. Use the tools below instead.
+
+### Prepared statements remove the problem at the source
+
+A prepared statement stores only the template with its `?` placeholders. The bound values never enter the query text, so they appear in neither the log, nor MySQL's error message, nor the `query` parameter of `OnQueryError`, nor `cache_get_query_string()`.
+
+```pawn
+// The log, OnQueryError and cache_get_query_string all see only:
+//   SELECT id FROM accounts WHERE name = ? AND token = ?
+```
+
+The same applies to passwords: `mysql_hash_password` never puts the plaintext in SQL, which is the concrete reason to prefer it over hashing through a MySQL function.
 
 ## Authority and ABI
 

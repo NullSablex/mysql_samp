@@ -52,6 +52,10 @@ public OnQueryError(errorid, const error[], const callback[], const query[], con
 {
     printf("[mysql] error %d on connId %d: %s", errorid, connId, error);
     printf("[mysql]   callback: %s", callback);
+    // Careful: this puts the whole statement in server_log.txt, including any
+    // value interpolated by mysql_format. Drop this line when the query may
+    // carry sensitive data — or use prepared statements, where the values are
+    // never part of the query text (see 08_prepared_statements.pwn).
     printf("[mysql]   query:    %s", query);
 
     // errorid is the native MySQL code (1146 = base table or view not found,

@@ -60,7 +60,7 @@ Fired on every loaded AMX when a threaded query fails. Parameters:
 | `errorid` | int | MySQL server error code (1062, 1045, 1064, …) or `0` for transport-level errors (TCP drop, IO error) |
 | `error` | string | Full error text from the `mysql` crate |
 | `callback` | string | Name of the public the query asked for (empty if fire-and-forget) |
-| `query` | string | Exact SQL that was sent to the server |
+| `query` | string | Exact SQL that was sent to the server. **Printing it puts the whole statement in your server log** — see the note below |
 | `connId` | int | Id of the connection that produced the error |
 
 ```pawn
@@ -73,6 +73,8 @@ public OnQueryError(errorid, const error[], const callback[], const query[], con
     return 1;
 }
 ```
+
+> The plugin itself never logs query text — only MySQL's error message, which for a syntax error may echo a fragment of the statement. The full SQL reaches your gamemode through the `query` parameter above, so printing it is what puts it in `server_log.txt`. When the statement may carry sensitive values, log `callback` and `errorid` instead — or use [prepared statements](queries.md#prepared-statements), where the values never enter the query text at all. See [Security](security.md#what-reaches-the-logs).
 
 The plugin also sets the per-connection errno to `MYSQL_ERROR_QUERY_FAILED` after firing the forward — so `mysql_errno(connId)` / `mysql_error(connId, ...)` can be read afterwards if you want the message in a different context.
 
