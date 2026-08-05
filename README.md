@@ -110,10 +110,10 @@ The full plugin documentation lives in [docs/](docs/):
 | Document | Contents |
 |---|---|
 | [Installation and setup](docs/installation.md) | Setup, server.cfg / config.json, requirements |
-| [Connection](docs/connection.md) | mysql_connect, mysql_close, mysql_status, charset |
-| [Options](docs/options.md) | All `MYSQL_OPT_*` values, defaults, TLS and mutual TLS |
-| [Queries](docs/queries.md) | mysql_query, mysql_pquery, mysql_format, mysql_escape_string, prepared statements, transactions |
-| [Cache](docs/cache.md) | All cache_* functions, save/restore, lifecycle |
+| [Connection](docs/connection.md) | mysql_connect, mysql_connect_file, mysql_close, mysql_status, charset, pool size |
+| [Options](docs/options.md) | All `MYSQL_OPT_*` values, defaults, TLS, mutual TLS, pool size |
+| [Queries](docs/queries.md) | mysql_query, mysql_pquery, mysql_format, mysql_escape_string, prepared statements, transactions, running a `.sql` file |
+| [Cache](docs/cache.md) | All cache_* functions, save/restore, lifecycle, multiple result sets |
 | [ORM](docs/orm.md) | Object-relational mapping, CRUD, bindings |
 | [Errors](docs/errors.md) | mysql_errno, mysql_error, OnQueryError, error codes |
 | [Security](docs/security.md) | Prepared statements vs escaping, password storage, TLS, resource limits |
