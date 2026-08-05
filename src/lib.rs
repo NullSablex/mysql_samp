@@ -1,13 +1,18 @@
 mod cache;
 mod callback;
+mod config;
 mod connection;
 mod error;
 mod logger;
 mod natives;
 mod options;
 mod orm;
+mod password;
 mod plugin;
 mod query;
+mod sql;
+mod stmt;
+mod transaction;
 
 use plugin::MysqlPlugin;
 use samp::initialize_plugin;
@@ -16,6 +21,7 @@ initialize_plugin!(
     natives: [
         // Connection
         MysqlPlugin::mysql_connect,
+        MysqlPlugin::mysql_connect_file,
         MysqlPlugin::mysql_close,
         MysqlPlugin::mysql_status,
         // Options
@@ -31,12 +37,32 @@ initialize_plugin!(
         // Utility
         MysqlPlugin::mysql_unprocessed_queries,
         MysqlPlugin::mysql_log,
+        // Password hashing
+        MysqlPlugin::mysql_hash_password,
+        MysqlPlugin::mysql_verify_password,
         // Query
         MysqlPlugin::mysql_query,
         MysqlPlugin::mysql_pquery,
         MysqlPlugin::mysql_tick,
         MysqlPlugin::mysql_escape_string,
         MysqlPlugin::mysql_format,
+        MysqlPlugin::mysql_query_file,
+        // Prepared statements
+        MysqlPlugin::mysql_stmt_new,
+        MysqlPlugin::mysql_stmt_close,
+        MysqlPlugin::mysql_stmt_reset,
+        MysqlPlugin::mysql_stmt_bind_int,
+        MysqlPlugin::mysql_stmt_bind_float,
+        MysqlPlugin::mysql_stmt_bind_str,
+        MysqlPlugin::mysql_stmt_bind_null,
+        MysqlPlugin::mysql_stmt_execute,
+        MysqlPlugin::mysql_stmt_pexecute,
+        // Transactions
+        MysqlPlugin::mysql_transaction_new,
+        MysqlPlugin::mysql_transaction_destroy,
+        MysqlPlugin::mysql_transaction_add,
+        MysqlPlugin::mysql_transaction_add_stmt,
+        MysqlPlugin::mysql_transaction_execute,
         // Cache
         MysqlPlugin::cache_get_row_count,
         MysqlPlugin::cache_get_field_count,
@@ -53,6 +79,8 @@ initialize_plugin!(
         MysqlPlugin::cache_insert_id,
         MysqlPlugin::cache_get_query_exec_time,
         MysqlPlugin::cache_get_query_string,
+        MysqlPlugin::cache_get_result_count,
+        MysqlPlugin::cache_set_result,
         MysqlPlugin::cache_save,
         MysqlPlugin::cache_delete,
         MysqlPlugin::cache_set_active,

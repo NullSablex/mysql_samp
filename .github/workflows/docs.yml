@@ -8,12 +8,14 @@ on:
       - 'docs/**'
       - 'mkdocs.yml'
       - 'docs/requirements.txt'
+      - 'docs/requirements.in'
       - '.github/workflows/docs.yml'
   pull_request:
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
       - 'docs/requirements.txt'
+      - 'docs/requirements.in'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
@@ -34,16 +36,18 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.x'
           cache: pip
           cache-dependency-path: docs/requirements.txt
 
       - name: Install MkDocs and theme
-        run: pip install -r docs/requirements.txt
+        run: pip install --require-hashes -r docs/requirements.txt
 
       - name: Strict build (fails on warnings)
         run: mkdocs build --strict
@@ -52,7 +56,7 @@ jobs:
       # a PR) can grab it. Uses the dedicated Pages artifact format.
       - name: Upload Pages artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: site
 
@@ -72,4 +76,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5

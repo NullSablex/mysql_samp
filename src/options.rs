@@ -5,8 +5,18 @@ pub struct MysqlOptions {
     pub port: u16,
     pub ssl: bool,
     pub ssl_ca: Option<String>,
+    /// Client certificate chain for mutual TLS. Requires [`Self::ssl_key`].
+    pub ssl_cert: Option<String>,
+    /// Client private key for mutual TLS. Requires [`Self::ssl_cert`].
+    pub ssl_key: Option<String>,
+    /// When false, the server certificate is accepted even if expired or
+    /// untrusted. Dangerous — see `MYSQL_OPT_SSL_VERIFY_CERT`.
+    pub ssl_verify_cert: bool,
     pub connect_timeout: Option<u32>,
     pub auto_reconnect: bool,
+    /// Maximum connections the pool may open. `None` keeps the driver default
+    /// (min 10, max 100).
+    pub pool_size: Option<u32>,
 }
 
 impl Default for MysqlOptions {
@@ -15,8 +25,12 @@ impl Default for MysqlOptions {
             port: 3306,
             ssl: false,
             ssl_ca: None,
+            ssl_cert: None,
+            ssl_key: None,
+            ssl_verify_cert: true,
             connect_timeout: None,
             auto_reconnect: true,
+            pool_size: None,
         }
     }
 }
@@ -29,6 +43,10 @@ pub enum MysqlOptionKind {
     SslCa = 2,
     ConnectTimeout = 3,
     AutoReconnect = 4,
+    SslCert = 5,
+    SslKey = 6,
+    SslVerifyCert = 7,
+    PoolSize = 8,
 }
 
 impl MysqlOptionKind {
@@ -39,6 +57,10 @@ impl MysqlOptionKind {
             2 => Some(Self::SslCa),
             3 => Some(Self::ConnectTimeout),
             4 => Some(Self::AutoReconnect),
+            5 => Some(Self::SslCert),
+            6 => Some(Self::SslKey),
+            7 => Some(Self::SslVerifyCert),
+            8 => Some(Self::PoolSize),
             _ => None,
         }
     }
@@ -88,6 +110,16 @@ impl OptionsManager {
                 opts.connect_timeout = Some(timeout);
             }
             MysqlOptionKind::AutoReconnect => opts.auto_reconnect = value != 0,
+            MysqlOptionKind::SslVerifyCert => opts.ssl_verify_cert = value != 0,
+            MysqlOptionKind::PoolSize => {
+                let Ok(size) = u32::try_from(value) else {
+                    return false;
+                };
+                if size == 0 {
+                    return false;
+                }
+                opts.pool_size = Some(size);
+            }
             _ => return false,
         }
 
@@ -101,6 +133,8 @@ impl OptionsManager {
 
         match option {
             MysqlOptionKind::SslCa => opts.ssl_ca = Some(value),
+            MysqlOptionKind::SslCert => opts.ssl_cert = Some(value),
+            MysqlOptionKind::SslKey => opts.ssl_key = Some(value),
             _ => return false,
         }
 
@@ -132,8 +166,42 @@ mod tests {
     #[test]
     fn option_kind_from_invalid_values() {
         assert_eq!(MysqlOptionKind::from_i32(-1), None);
-        assert_eq!(MysqlOptionKind::from_i32(5), None);
+        assert_eq!(MysqlOptionKind::from_i32(9), None);
         assert_eq!(MysqlOptionKind::from_i32(100), None);
+    }
+
+    #[test]
+    fn option_kind_covers_tls_options() {
+        assert_eq!(MysqlOptionKind::from_i32(5), Some(MysqlOptionKind::SslCert));
+        assert_eq!(MysqlOptionKind::from_i32(6), Some(MysqlOptionKind::SslKey));
+        assert_eq!(
+            MysqlOptionKind::from_i32(7),
+            Some(MysqlOptionKind::SslVerifyCert)
+        );
+    }
+
+    #[test]
+    fn tls_options_use_the_right_setter() {
+        let mut mgr = OptionsManager::new();
+        let id = mgr.create();
+
+        assert!(mgr.set_str(id, MysqlOptionKind::SslCert, "cert.pem".into()));
+        assert!(mgr.set_str(id, MysqlOptionKind::SslKey, "key.pem".into()));
+        assert!(mgr.set_int(id, MysqlOptionKind::SslVerifyCert, 0));
+
+        // Mismatched setters are rejected rather than silently ignored.
+        assert!(!mgr.set_int(id, MysqlOptionKind::SslCert, 1));
+        assert!(!mgr.set_str(id, MysqlOptionKind::SslVerifyCert, "yes".into()));
+
+        let opts = mgr.get(id).expect("options exist");
+        assert_eq!(opts.ssl_cert.as_deref(), Some("cert.pem"));
+        assert_eq!(opts.ssl_key.as_deref(), Some("key.pem"));
+        assert!(!opts.ssl_verify_cert);
+    }
+
+    #[test]
+    fn tls_verification_is_on_by_default() {
+        assert!(MysqlOptions::default().ssl_verify_cert);
     }
 
     // MysqlOptions tests

@@ -9,7 +9,10 @@ use crate::error::{ErrorState, MysqlError};
 use crate::logger::Logger;
 use crate::options::OptionsManager;
 use crate::orm::OrmManager;
-use crate::query::QueryManager;
+use crate::password::{PasswordManager, PasswordOutcome};
+use crate::query::{CallbackParam, QueryManager};
+use crate::stmt::StmtManager;
+use crate::transaction::TransactionManager;
 
 pub struct MysqlPlugin {
     pub connections: ConnectionManager,
@@ -17,6 +20,9 @@ pub struct MysqlPlugin {
     pub cache: CacheManager,
     pub queries: QueryManager,
     pub orm: OrmManager,
+    pub passwords: PasswordManager,
+    pub stmts: StmtManager,
+    pub transactions: TransactionManager,
     pub amx_list: Vec<AmxIdent>,
 }
 
@@ -30,6 +36,9 @@ impl MysqlPlugin {
             cache: CacheManager::new(),
             queries: QueryManager::new(),
             orm: OrmManager::new(),
+            passwords: PasswordManager::new(),
+            stmts: StmtManager::new(),
+            transactions: TransactionManager::new(),
             amx_list: Vec::new(),
         }
     }
@@ -86,6 +95,38 @@ impl MysqlPlugin {
             self.cache.pop_active();
         }
     }
+
+    /// Dispatches finished Argon2id work to its Pawn callback.
+    pub fn process_pending_passwords(&mut self) {
+        for result in self.passwords.poll_results() {
+            let mut info = result.callback;
+
+            match result.outcome {
+                PasswordOutcome::Hash(hash) => {
+                    info.params.insert(0, CallbackParam::String(hash));
+                }
+                PasswordOutcome::Verify(matched) => {
+                    info.params
+                        .insert(0, CallbackParam::Int(i32::from(matched)));
+                }
+                PasswordOutcome::Failed(detail) => {
+                    Logger::error_detail(
+                        "Password operation failed. See logs/mysql.log for details.",
+                        &detail,
+                    );
+                    // Report the failure as "did not match" / empty hash rather
+                    // than dropping the callback: a gamemode waiting on it would
+                    // otherwise leave the player stuck forever.
+                    match info.format.chars().next() {
+                        Some('s') => info.params.insert(0, CallbackParam::String(String::new())),
+                        _ => info.params.insert(0, CallbackParam::Int(0)),
+                    }
+                }
+            }
+
+            callback::invoke_callback(&self.amx_list, &info);
+        }
+    }
 }
 
 impl SampPlugin for MysqlPlugin {
@@ -93,6 +134,7 @@ impl SampPlugin for MysqlPlugin {
 
     fn on_unload(&mut self) {
         Logger::info("Plugin unloaded.");
+        Logger::flush();
     }
 
     fn on_amx_load(&mut self, amx: &Amx) {
@@ -104,8 +146,11 @@ impl SampPlugin for MysqlPlugin {
         let ident = amx.ident();
         self.amx_list.retain(|id| *id != ident);
 
-        // Destroy ORM instances associated with the unloaded AMX
+        // Reclaim everything the unloaded script owned. Without this a
+        // gamemode restart leaks every handle it ever created.
         self.orm.destroy_by_amx(ident);
+        self.stmts.destroy_by_amx(ident);
+        self.transactions.destroy_by_amx(ident);
     }
 
     /// Unified tick callback (v3.0.0+): fires on both SA-MP (ProcessTick) and
@@ -113,6 +158,7 @@ impl SampPlugin for MysqlPlugin {
     /// dispatch automatically — no Pawn timer required anymore.
     fn on_tick(&mut self, _ctx: TickContext) {
         self.process_pending_queries();
+        self.process_pending_passwords();
     }
 
     fn on_omp_ready(&mut self) {

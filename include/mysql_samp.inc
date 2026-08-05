@@ -1,5 +1,5 @@
 /*
- * mysql_samp v1.1.1 - MySQL plugin for SA-MP and Open Multiplayer.
+ * mysql_samp v1.2.0 - MySQL plugin for SA-MP and Open Multiplayer.
  * Author:     NullSablex
  * Repository: https://github.com/NullSablex/mysql_samp
  * License:    GPL-3.0
@@ -10,7 +10,7 @@
 #endif
 #define _mysql_samp_included
 
-#define MYSQL_SAMP_VERSION "1.1.1"
+#define MYSQL_SAMP_VERSION "1.2.0"
 
 // Connection options
 enum {
@@ -19,6 +19,16 @@ enum {
     MYSQL_OPT_SSL_CA,
     MYSQL_OPT_CONNECT_TIMEOUT,
     MYSQL_OPT_AUTO_RECONNECT,
+    // Client certificate chain (PEM/DER) for mutual TLS. Needs MYSQL_OPT_SSL_KEY.
+    MYSQL_OPT_SSL_CERT,
+    // Client private key (PEM/DER) for mutual TLS. Needs MYSQL_OPT_SSL_CERT.
+    MYSQL_OPT_SSL_KEY,
+    // 1 (default) verifies the server certificate and hostname. Setting it to 0
+    // keeps the traffic encrypted but accepts ANY certificate, which defeats the
+    // point of TLS against an active attacker. Prefer MYSQL_OPT_SSL_CA.
+    MYSQL_OPT_SSL_VERIFY_CERT,
+    // Maximum connections the pool may open. Default is the driver's (max 100).
+    MYSQL_OPT_POOL_SIZE,
 }
 
 // Error codes
@@ -59,6 +69,9 @@ native bool:mysql_options_set_str(handle, option, const value[]);
 
 // Connection
 native mysql_connect(const host[], const user[], const password[], const database[], options = 0);
+// Reads host / user / password / database from a `key = value` file, keeping
+// credentials out of the gamemode source. Options stay with mysql_options_new.
+native mysql_connect_file(const path[] = "mysql.ini", options = 0);
 native bool:mysql_close(connId);
 native bool:mysql_status(connId, dest[], max_len = sizeof(dest));
 
@@ -80,8 +93,41 @@ native bool:mysql_pquery(connId, const query[], const callback[] = "", const for
 // Kept for backwards compatibility only: since rust-samp v3.0.0 the unified
 // on_tick already dispatches callbacks automatically on SA-MP and native open.mp.
 native bool:mysql_tick();
-native bool:mysql_escape_string(const src[], dest[], max_len = sizeof(dest));
+// connId selects the escaping rules, which depend on the server's sql_mode.
+// Pass the real connection whenever the server may run with NO_BACKSLASH_ESCAPES;
+// 0 assumes the MySQL default.
+native bool:mysql_escape_string(const src[], dest[], max_len = sizeof(dest), connId = 0);
 native mysql_format(connId, dest[], max_len, const format[], {Float,_}:...);
+// Runs the statements of a .sql file in order on one connection, non-blocking.
+// Split on `;` outside literals and comments. NOT transactional: DDL commits
+// implicitly in MySQL. Stops at the first failure, naming which statement.
+native bool:mysql_query_file(connId, const path[], const callback[] = "", const format[] = "", {Float,_}:...);
+
+// Prepared statements (non-blocking, FIFO like mysql_query)
+//
+// Values are bound server-side over the binary protocol instead of being pasted
+// into the SQL text, so no escaping is involved and a value can never be
+// reinterpreted as syntax. Prefer this over mysql_format for anything that
+// carries player input.
+//
+//   new stmt = mysql_stmt_new(connId, "SELECT id FROM users WHERE name = ? AND age > ?");
+//   mysql_stmt_bind_str(stmt, inputName);
+//   mysql_stmt_bind_int(stmt, 18);
+//   mysql_stmt_execute(stmt, "OnUsersFound", "d", playerid);
+//
+// The statement is reusable: call mysql_stmt_reset to drop the bound values and
+// bind a fresh set. mysql_stmt_execute fails if the number of bound values does
+// not match the number of ? placeholders.
+native mysql_stmt_new(connId, const query[]);
+native bool:mysql_stmt_close(stmtId);
+native bool:mysql_stmt_reset(stmtId);
+native bool:mysql_stmt_bind_int(stmtId, value);
+native bool:mysql_stmt_bind_float(stmtId, Float:value);
+native bool:mysql_stmt_bind_str(stmtId, const value[]);
+native bool:mysql_stmt_bind_null(stmtId);
+native bool:mysql_stmt_execute(stmtId, const callback[] = "", const format[] = "", {Float,_}:...);
+// Parallel counterpart, mirroring mysql_pquery: no ordering guarantee.
+native bool:mysql_stmt_pexecute(stmtId, const callback[] = "", const format[] = "", {Float,_}:...);
 
 // Cache
 native cache_get_row_count();
@@ -101,6 +147,12 @@ native cache_insert_id();
 native cache_warning_count();
 native cache_get_query_exec_time();
 native bool:cache_get_query_string(dest[], max_len = sizeof(dest));
+// Result sets in the active cache. A plain query yields 1; a script or a
+// stored-procedure CALL can yield several. cache_set_result picks which one
+// every other cache_* native reports on (index 0 until changed).
+native cache_get_result_count();
+native bool:cache_set_result(result_index);
+
 native cache_save();
 native bool:cache_delete(cache_id);
 native bool:cache_set_active(cache_id);
@@ -124,3 +176,44 @@ native bool:orm_addvar_string(orm_id, var[], var_max_len, const column_name[]);
 native bool:orm_delvar(orm_id, const column_name[]);
 native bool:orm_clear_vars(orm_id);
 native bool:orm_setkey(orm_id, const column_name[]);
+
+// Password hashing (Argon2id)
+//
+// Both natives run on a worker thread — Argon2id is deliberately slow, so
+// hashing on the server thread would stall it. The result is delivered as the
+// FIRST argument of the callback, followed by the extras described by format.
+//
+//   forward OnHashed(const hash[], playerid);
+//   mysql_hash_password("secret", "OnHashed", "d", playerid);
+//
+//   forward OnChecked(bool:success, playerid);
+//   mysql_verify_password("secret", stored_hash, "OnChecked", "d", playerid);
+//
+// The hash is a PHC string (`$argon2id$v=19$m=...`) around 100 characters long;
+// size the storage column and any Pawn buffer accordingly (VARCHAR(255) is the
+// usual choice). It already embeds its own random salt — do not add one.
+native bool:mysql_hash_password(const password[], const callback[], const format[] = "", {Float,_}:...);
+native bool:mysql_verify_password(const password[], const hash[], const callback[], const format[] = "", {Float,_}:...);
+
+// Transactions (non-blocking, all-or-nothing)
+//
+// Steps are collected first and then executed as one unit on a single
+// connection: START TRANSACTION, every step, COMMIT. Any failing step rolls the
+// whole batch back and fires OnQueryError. There is no interactive
+// begin/commit API on purpose — holding a pooled connection between ticks would
+// leak it whenever a gamemode never reached the commit.
+//
+//   new tx = mysql_transaction_new(connId);
+//   mysql_transaction_add(tx, "UPDATE accounts SET balance = balance - 100 WHERE id = 1");
+//   mysql_transaction_add(tx, "UPDATE accounts SET balance = balance + 100 WHERE id = 2");
+//   mysql_transaction_execute(tx, "OnTransferDone", "d", playerid);
+//
+// mysql_transaction_add_stmt appends a prepared statement with its bound values,
+// which is the safe way to put player input inside a transaction.
+// mysql_transaction_execute consumes the handle: the ID is invalid afterwards.
+// The callback receives the cache of the LAST step.
+native mysql_transaction_new(connId);
+native bool:mysql_transaction_destroy(txId);
+native bool:mysql_transaction_add(txId, const query[]);
+native bool:mysql_transaction_add_stmt(txId, stmtId);
+native bool:mysql_transaction_execute(txId, const callback[] = "", const format[] = "", {Float,_}:...);

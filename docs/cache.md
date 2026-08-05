@@ -169,6 +169,33 @@ cache_get_query_string(query);
 printf("query: %s", query);
 ```
 
+## Multiple result sets
+
+Most queries produce one result set. A `CALL` to a stored procedure, or a script run through `mysql_query_file`, can produce several.
+
+```pawn
+native cache_get_result_count();
+native bool:cache_set_result(result_index);
+```
+
+Every other `cache_*` native reports on the **selected** set. Index `0` is selected until you change it, so a single-set query behaves exactly as it always did and existing code needs no changes.
+
+```pawn
+public OnProcedureDone()
+{
+    new sets = cache_get_result_count();
+    for (new i = 0; i < sets; i++)
+    {
+        cache_set_result(i);
+        printf("result %d: %d row(s), %d column(s)", i, cache_get_row_count(), cache_get_field_count());
+    }
+}
+```
+
+`cache_set_result` returns `false` for an out-of-range index and leaves the current selection untouched.
+
+`cache_save` copies **every** result set together with the current selection, so saving and later switching sets does not lose data.
+
 ## Persistent caches
 
 By default the cache is dropped when the callback returns. To keep a result around, save it:

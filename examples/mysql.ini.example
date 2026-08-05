@@ -1,0 +1,22 @@
+# Copy this to mysql.ini and fill in your own values.
+#
+# Keep the real file OUT of version control — that is the whole point of
+# mysql_connect_file. Add it to .gitignore:
+#
+#     mysql.ini
+#
+# Format: key = value, one per line.
+#   - Keys are case-insensitive; surrounding whitespace is trimmed.
+#   - `#` and `;` start a comment.
+#   - Only the first `=` splits the line, so a password may contain `=`.
+#   - Wrap a value in quotes to keep leading or trailing spaces.
+#   - host, user and database are required. password may be empty or absent.
+#   - Unknown keys are ignored, so sharing this file with another tool is fine.
+#
+# Connection OPTIONS (port, SSL, timeouts, pool size) are NOT read from here.
+# They stay with mysql_options_new so there is one place to look for tuning.
+
+host     = 127.0.0.1
+user     = samp
+password = change-me
+database = samp_server

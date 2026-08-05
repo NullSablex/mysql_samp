@@ -2,6 +2,7 @@ use samp::args::Args;
 use samp::native;
 use samp::prelude::*;
 
+use crate::connection::EscapeMode;
 use crate::error::{ErrorState, MysqlError};
 use crate::logger::Logger;
 use crate::natives::query::parse_variadic_params;
@@ -55,17 +56,17 @@ impl OrmOp {
         }
     }
 
-    fn build(self, inst: &OrmInstance) -> Option<String> {
+    fn build(self, inst: &OrmInstance, mode: EscapeMode) -> Option<String> {
         match self {
-            Self::Select => inst.build_select(),
-            Self::Update => inst.build_update(),
-            Self::Insert => inst.build_insert(),
-            Self::Delete => inst.build_delete(),
+            Self::Select => inst.build_select(mode),
+            Self::Update => inst.build_update(mode),
+            Self::Insert => inst.build_insert(mode),
+            Self::Delete => inst.build_delete(mode),
             Self::Save => {
                 if inst.is_key_empty() {
-                    inst.build_insert()
+                    inst.build_insert(mode)
                 } else {
-                    inst.build_update()
+                    inst.build_update(mode)
                 }
             }
         }
@@ -159,7 +160,7 @@ impl MysqlPlugin {
                 return false;
             };
 
-            let Some(query) = op.build(inst) else {
+            let Some(query) = op.build(inst, self.connections.escape_mode(inst.conn_id)) else {
                 let msg = format!("ORM {name} failed: {}.", op.build_error_detail());
                 Logger::warn(&msg);
                 self.connections.global_error = ErrorState::new(op.build_error_code(), msg);

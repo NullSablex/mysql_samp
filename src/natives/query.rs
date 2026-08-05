@@ -3,7 +3,7 @@ use samp::cell::Ref;
 use samp::native;
 use samp::prelude::*;
 
-use crate::connection::escape_string;
+use crate::connection::{EscapeMode, escape_string};
 use crate::error::{ErrorState, MysqlError};
 use crate::logger::Logger;
 use crate::plugin::MysqlPlugin;
@@ -144,6 +144,89 @@ impl MysqlPlugin {
         true
     }
 
+    /// mysql_query_file(connId, const path[], const callback[] = "", const format[] = "", {Float,_}:...)
+    ///
+    /// Reads a `.sql` file and runs its statements in order on one connection,
+    /// non-blocking like every other query here. The callback receives the
+    /// cache of the last statement.
+    ///
+    /// The script is split on `;` outside string literals and comments, so a
+    /// semicolon inside `'...'` or `/* ... */` does not break a statement in
+    /// two. It is **not** run in a transaction: these files are usually schema
+    /// work, and DDL implicitly commits in MySQL, so a transaction would imply
+    /// an atomicity the server does not give. On failure the error names which
+    /// statement failed and execution stops there — earlier statements stay
+    /// applied.
+    ///
+    /// The path comes from your gamemode, so treat it like any other file it
+    /// opens: do not build it from player input.
+    #[native(name = "mysql_query_file", raw)]
+    pub fn mysql_query_file(&mut self, _amx: &Amx, mut args: Args) -> bool {
+        let Some(conn_id) = args.next_arg::<i32>() else {
+            return false;
+        };
+        let Some(path) = args.next_arg::<AmxString>() else {
+            return false;
+        };
+
+        let callback = args
+            .next_arg::<AmxString>()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        let format = args
+            .next_arg::<AmxString>()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+
+        let path = path.to_string();
+        let script = match std::fs::read_to_string(&path) {
+            Ok(script) => script,
+            Err(err) => {
+                let msg = format!("mysql_query_file: could not read '{path}': {err}");
+                Logger::warn(&msg);
+                self.connections.global_error = ErrorState::new(MysqlError::QueryFailed, msg);
+                return false;
+            }
+        };
+
+        let statements = crate::sql::split_statements(&script);
+        if statements.is_empty() {
+            let msg = format!("mysql_query_file: '{path}' contains no statements.");
+            Logger::warn(&msg);
+            self.connections.global_error = ErrorState::new(MysqlError::QueryFailed, msg);
+            return false;
+        }
+
+        let Some(pool) = self.connections.get_pool(conn_id) else {
+            Logger::warn("mysql_query_file failed: invalid connection ID.");
+            self.connections.global_error = ErrorState::new(
+                MysqlError::InvalidConnection,
+                "mysql_query_file failed: invalid connection ID.",
+            );
+            return false;
+        };
+
+        let callback_info = if callback.is_empty() {
+            None
+        } else {
+            let params = parse_variadic_params(&mut args, &format, 4);
+            Some(CallbackInfo {
+                name: callback,
+                format,
+                params,
+            })
+        };
+
+        Logger::info(&format!(
+            "Running {} statement(s) from '{}'.",
+            statements.len(),
+            path
+        ));
+        self.queries
+            .submit_script(pool, statements, callback_info, conn_id);
+        true
+    }
+
     /// mysql_tick()
     /// Kept only for backwards compatibility — since rust-samp v3.0.0 the
     /// unified `on_tick` already dispatches callbacks automatically on both
@@ -154,7 +237,13 @@ impl MysqlPlugin {
         true
     }
 
-    /// mysql_escape_string(const src[], dest[], max_len = sizeof(dest))
+    /// mysql_escape_string(const src[], dest[], max_len = sizeof(dest), connId = 0)
+    ///
+    /// `connId` selects the escaping rules, which depend on the server's
+    /// `sql_mode`. It is trailing and optional so existing calls keep
+    /// compiling; `0` means "no connection", which assumes the MySQL default.
+    /// Always pass the real connection when the server may run with
+    /// `NO_BACKSLASH_ESCAPES`.
     #[native(name = "mysql_escape_string")]
     pub fn mysql_escape_string(
         &mut self,
@@ -162,8 +251,9 @@ impl MysqlPlugin {
         src: &AmxString,
         dest: UnsizedBuffer,
         dest_len: usize,
+        conn_id: i32,
     ) -> AmxResult<bool> {
-        let escaped = escape_string(src);
+        let escaped = escape_string(src, self.connections.escape_mode(conn_id));
         dest.write_str(dest_len, &escaped)?;
         Ok(true)
     }
@@ -175,7 +265,7 @@ impl MysqlPlugin {
     /// small. A warning is logged once per call when truncation occurs.
     #[native(name = "mysql_format", raw)]
     pub fn mysql_format(&mut self, _amx: &Amx, mut args: Args) -> i32 {
-        let Some(_conn_id) = args.next_arg::<i32>() else {
+        let Some(conn_id) = args.next_arg::<i32>() else {
             return 0;
         };
         let Some(dest) = args.next_arg::<UnsizedBuffer>() else {
@@ -191,7 +281,7 @@ impl MysqlPlugin {
         let fmt = format_str.to_string();
         let specs = parse_format(&fmt);
         let values = collect_format_values(&args, &specs, 4);
-        let rendered = render_format(&specs, &values);
+        let rendered = render_format(&specs, &values, self.connections.escape_mode(conn_id));
 
         if rendered.unknown_specs > 0 {
             Logger::warn(&format!(
@@ -319,7 +409,11 @@ pub fn parse_format(fmt: &str) -> Vec<FormatSpec> {
     out
 }
 
-pub fn render_format(specs: &[FormatSpec], values: &[FormatValue]) -> FormatResult {
+pub fn render_format(
+    specs: &[FormatSpec],
+    values: &[FormatValue],
+    mode: EscapeMode,
+) -> FormatResult {
     let mut output = String::new();
     let mut values_iter = values.iter();
     let mut unknown = 0usize;
@@ -340,7 +434,7 @@ pub fn render_format(specs: &[FormatSpec], values: &[FormatValue]) -> FormatResu
             }
             FormatSpec::EscapedStr => {
                 if let Some(FormatValue::Str(s)) = values_iter.next() {
-                    output.push_str(&escape_string(s));
+                    output.push_str(&escape_string(s, mode));
                 }
             }
             FormatSpec::RawStr => {
@@ -464,7 +558,7 @@ mod tests {
     fn render_format_basic() {
         let specs = parse_format("INSERT INTO t (id, name) VALUES (%d, '%s')");
         let values = vec![FormatValue::Int(42), FormatValue::Str("O'Brien".into())];
-        let r = render_format(&specs, &values);
+        let r = render_format(&specs, &values, EscapeMode::Backslash);
         assert_eq!(
             r.output,
             "INSERT INTO t (id, name) VALUES (42, 'O\\'Brien')"
@@ -475,35 +569,43 @@ mod tests {
     #[test]
     fn render_format_float_precision() {
         let specs = parse_format("v=%f");
-        let r = render_format(&specs, &[FormatValue::Float(1.5)]);
+        let r = render_format(&specs, &[FormatValue::Float(1.5)], EscapeMode::Backslash);
         assert_eq!(r.output, "v=1.5000");
     }
 
     #[test]
     fn render_format_raw_string_not_escaped() {
         let specs = parse_format("raw=%r");
-        let r = render_format(&specs, &[FormatValue::Str("a'b".into())]);
+        let r = render_format(
+            &specs,
+            &[FormatValue::Str("a'b".into())],
+            EscapeMode::Backslash,
+        );
         assert_eq!(r.output, "raw=a'b");
     }
 
     #[test]
     fn render_format_escaped_string_is_escaped() {
         let specs = parse_format("v=%e");
-        let r = render_format(&specs, &[FormatValue::Str("a'b".into())]);
+        let r = render_format(
+            &specs,
+            &[FormatValue::Str("a'b".into())],
+            EscapeMode::Backslash,
+        );
         assert_eq!(r.output, "v=a\\'b");
     }
 
     #[test]
     fn render_format_percent_literal() {
         let specs = parse_format("100%%");
-        let r = render_format(&specs, &[]);
+        let r = render_format(&specs, &[], EscapeMode::Backslash);
         assert_eq!(r.output, "100%");
     }
 
     #[test]
     fn render_format_unknown_spec_counted() {
         let specs = parse_format("%z %q");
-        let r = render_format(&specs, &[]);
+        let r = render_format(&specs, &[], EscapeMode::Backslash);
         assert_eq!(r.unknown_specs, 2);
         assert_eq!(r.output, "%z %q");
     }
@@ -511,7 +613,7 @@ mod tests {
     #[test]
     fn render_format_missing_value_skipped() {
         let specs = parse_format("%d-%d");
-        let r = render_format(&specs, &[FormatValue::Int(5)]);
+        let r = render_format(&specs, &[FormatValue::Int(5)], EscapeMode::Backslash);
         assert_eq!(r.output, "5-");
     }
 

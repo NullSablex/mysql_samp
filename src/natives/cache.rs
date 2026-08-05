@@ -1,6 +1,7 @@
 use samp::native;
 use samp::prelude::*;
 
+use crate::logger::Logger;
 use crate::plugin::MysqlPlugin;
 
 impl MysqlPlugin {
@@ -244,6 +245,34 @@ impl MysqlPlugin {
         let query = entry.query_string().to_string();
         dest.write_str(dest_len, &query)?;
         Ok(true)
+    }
+
+    /// cache_get_result_count()
+    ///
+    /// Number of result sets in the active cache. A plain query yields 1; a
+    /// script or a stored-procedure `CALL` can yield several.
+    #[native(name = "cache_get_result_count")]
+    pub fn cache_get_result_count(&mut self, _amx: &Amx) -> i32 {
+        let Some(cache) = self.cache.get_active() else {
+            return 0;
+        };
+        i32::try_from(cache.result_count()).unwrap_or(i32::MAX)
+    }
+
+    /// cache_set_result(result_index)
+    ///
+    /// Selects which result set the `cache_*` readers report on. The first set
+    /// (index 0) is selected until this is called.
+    #[native(name = "cache_set_result")]
+    pub fn cache_set_result(&mut self, _amx: &Amx, result_index: i32) -> bool {
+        let Ok(index) = usize::try_from(result_index) else {
+            return false;
+        };
+        let Some(cache) = self.cache.get_active_mut() else {
+            Logger::warn("cache_set_result failed: no active cache.");
+            return false;
+        };
+        cache.set_result(index)
     }
 
     #[native(name = "cache_save")]

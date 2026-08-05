@@ -4,6 +4,74 @@ All notable changes to this project are documented in this file.
 
 Format inspired by [Keep a Changelog](https://keepachangelog.com/). Versioning follows [Semantic Versioning](https://semver.org/). Older entries live under [`changelog/`](changelog/).
 
+## [1.2.0] — 2026/08/05
+
+Built on top of [rust-samp v3.4.0](https://github.com/NullSablex/rust-samp). No Pawn-visible API was removed or renamed.
+
+### Security
+
+Three issues, all present since the feature they affect was introduced. **Read the first two if you use `MYSQL_OPT_SSL` or interpolate player input into queries.**
+
+- **`MYSQL_OPT_SSL` never encrypted anything.** The `mysql` crate was built with the `default-rust` feature, which — despite the name — enables no TLS backend at all. Without one the crate's `make_secure` is a `panic!` stub, so enabling SSL aborted the connection rather than securing it. v1.1.1 announced these options as wired through "(rustls)"; that was wrong. **If you enabled `MYSQL_OPT_SSL` on an older build, your traffic was never encrypted** — treat those credentials as exposed.
+
+  `rustls-tls-ring` is now enabled and TLS was verified end to end against MariaDB 11.8: the server's completed-handshake counter advances for each connection, and with the default `MYSQL_OPT_SSL_VERIFY_CERT` a self-signed certificate is rejected with `invalid peer certificate: UnknownIssuer` rather than silently falling back.
+
+  Note that TLS is not available over a unix socket — a host starting with `/` has nothing to encrypt. Use a TCP host if you need it.
+
+- **SQL injection under `sql_mode=NO_BACKSLASH_ESCAPES`.** `mysql_escape_string`, `mysql_format` and the ORM escaped `'` as `\'`. Under that mode the backslash is not an escape character, so `\'` is a literal backslash followed by a *live* quote and a crafted value breaks out of the literal. Because the driver always enables `CLIENT_MULTI_STATEMENTS` (the crate forbids disabling it), that escape is enough to append a second statement. The escaping mode is now detected per connection from the server's `sql_mode` and switches to quote doubling, matching `mysql_real_escape_string`. Verified live against MariaDB with `sql_mode=NO_BACKSLASH_ESCAPES`: the plugin logs the mode switch, `mysql_escape_string("O'Brien")` yields `O''Brien`, and an injection payload aimed at that mode stays contained inside the string literal.
+- **ORM string values were double-encoded.** `read_string` mapped each AMX byte to a `char`, i.e. decoded the value as Latin-1 and re-encoded it as UTF-8. The two bytes of `é` became the four of `Ã©`, silently corrupting every non-ASCII value written through the ORM. It now decodes as UTF-8, matching the `SET NAMES utf8mb4` the connection already uses. **Rows already written with the old build stay corrupted** and need fixing at the database level.
+- **Statement and transaction handles leaked.** Neither manager released anything on script unload or connection close, so a gamemode restart — routine during development — left every handle ever created in memory, growing without bound across restarts. Both are now reclaimed in `on_amx_unload` (like the ORM already was) and on `mysql_close`, which also drops handles that could never execute again.
+- **Prepared statements returned nothing for any numeric column.** `Row::get::<Option<String>>` goes through `from_value`, which **panics** on a failed conversion. Over the text protocol every value arrives as bytes, so it never fired — but a prepared statement uses the binary protocol, where an `INT` arrives as `Value::Int` and `String` does not accept it. The worker thread died silently: no rows, no callback, no error, no log line. Any `mysql_stmt_execute` selecting a number was affected, which is most of them. Values are now converted explicitly, rendering numbers the way the text protocol does so a column reads the same either way. Found by running against a real server; no unit test could have caught it.
+- **`mysql_format` ignored its `connId`.** The argument was parsed and discarded, so per-connection escaping rules could not be applied even in principle. It is now used.
+
+### Added
+
+- **Prepared statements** — `mysql_stmt_new`, `mysql_stmt_bind_int` / `_float` / `_str` / `_null`, `mysql_stmt_reset`, `mysql_stmt_execute`, `mysql_stmt_close`. Values are bound server-side over the binary protocol instead of being pasted into SQL text, so no escaping is involved and a value can never be reinterpreted as syntax. This is the structural fix for injection — prefer it over `mysql_format` for anything carrying player input. `mysql_stmt_execute` rejects a mismatch between bound values and `?` placeholders, naming both counts.
+- **Transactions** — `mysql_transaction_new`, `mysql_transaction_add`, `mysql_transaction_add_stmt`, `mysql_transaction_execute`, `mysql_transaction_destroy`. Steps are collected and then run as one unit on a single connection (`START TRANSACTION` … `COMMIT`); any failing step rolls the batch back. Deliberately batch-based rather than an interactive begin/commit: holding a pooled connection across ticks would leak it whenever a gamemode never reached the commit. `mysql_transaction_execute` consumes the handle so a batch cannot run twice.
+- **Argon2id password hashing** — `mysql_hash_password` and `mysql_verify_password`, both non-blocking on a bounded worker pool (`min(cpus, 4)` threads, 512-job queue). The pool is bounded on purpose: Argon2id costs ~19 MiB per concurrent hash, so a thread per request would let a login flood allocate gigabytes. Both natives return `false` when the queue is saturated. Argon2id is deliberately slow and memory-hard, which is exactly why it cannot run on the server thread. Output is a PHC string (`$argon2id$v=19$m=...`, ~100 chars) with its own embedded random salt — store it as-is in a `VARCHAR(255)`, do not add a salt of your own. Verification reads the parameters back from the stored hash, so old hashes keep working when the defaults change.
+- **Mutual TLS** — `MYSQL_OPT_SSL_CERT` and `MYSQL_OPT_SSL_KEY`. Supplying only one of the two logs a warning instead of silently ignoring it.
+- **`MYSQL_OPT_SSL_VERIFY_CERT`** (default on) — turning it off accepts any certificate and skips the hostname check. Encrypted but trivially machine-in-the-middled; it warns on every connect. `MYSQL_OPT_SSL_CA` is the correct fix for a self-signed server.
+- `mysql_escape_string` gained an optional trailing `connId` so it can apply the right escaping rules. Existing calls keep compiling.
+- **Not-affiliated disclaimer** in the README and the docs home, making explicit that this is an independent project with no connection to SA-MP, open.mp, or the MySQL plugin by BlueG / maddinat0r that the checklist compares against.
+- **OpenSSF Scorecard badge** in the README.
+- **`examples/` folder** — 11 self-contained `.pwn` scripts plus a README covering how to compile them and where to drop the binary on each server. Connection, threaded and parallel queries, `mysql_format`, ORM, TLS, `OnQueryError`, and the four new ones for this release: [`08_prepared_statements.pwn`](examples/08_prepared_statements.pwn), [`09_transactions.pwn`](examples/09_transactions.pwn) and [`10_password_hashing.pwn`](examples/10_password_hashing.pwn). [`11_config_and_scripts.pwn`](examples/11_config_and_scripts.pwn) covers `mysql_connect_file`, `mysql_query_file` and multiple result sets, with the companion `mysql.ini.example` and `schema.sql`. `06_ssl.pwn` was rewritten for the TLS options above, including the warning about older builds.
+- **`CODEOWNERS`** for review routing.
+- **`mysql_stmt_pexecute`** — parallel counterpart of `mysql_stmt_execute`, mirroring `mysql_pquery`. Without it, moving a `mysql_pquery` call to prepared statements silently gave up parallelism.
+- **`mysql_connect_file(const path[] = "mysql.ini", options = 0)`** — reads host / user / password / database from a `key = value` file, keeping credentials out of a gamemode source that is usually in version control. Options stay with `mysql_options_new`, so there is one place to look for tuning. Parse errors name the offending *key*, never a value.
+- **`mysql_query_file`** — runs a `.sql` file's statements in order on one connection, non-blocking like everything else. Split on `;` outside string literals and comments, so a semicolon inside `'...'` or `/* ... */` does not break a statement in two. Deliberately **not** transactional: DDL commits implicitly in MySQL, so a transaction would imply an atomicity the server does not provide. A failure names which statement failed and stops there.
+- **Multi-result sets** — `cache_get_result_count` and `cache_set_result`. A stored-procedure `CALL` or a script produces several result sets; previously only the first was reachable. Every `cache_*` reader reports on the selected set, which stays at index 0 unless changed, so single-set queries behave exactly as before. `cache_save` copies every set, not just the selected one.
+- **`MYSQL_OPT_POOL_SIZE`** — caps how many connections the pool may open (the driver defaults to a maximum of 100).
+- **Log rotation.** `logs/mysql.log` now rotates into `logs/archive/mysql.log.{N}.gz` once it passes 50 MB, gzipping each archive. Archives are never deleted by the plugin — cleanup stays with the operator, or `MYSQL_SAMP_LOG_ROTATION_KEEP` prunes automatically. Compression reuses the `flate2` the MySQL driver already pulls in, so it costs no new dependency.
+- **Environment overrides for the log pipeline.** `MYSQL_SAMP_LOG_LEVEL`, `_DIR`, `_FILE`, `_ROTATION_MB`, `_ROTATION_KEEP`, `_NO_ROTATION`, `_NO_BANNER` and `_COMPRESS` retune logging without rebuilding the plugin. `mysql_log()` still overrides the level at runtime.
+- The startup banner is now written to `logs/mysql.log` as well as the console, marking where each restart begins in a rotated log.
+- The log file is flushed explicitly on plugin unload, so the tail is not lost if the process exits before the OS syncs the handle.
+
+### Changed
+
+- **Upgraded to rust-samp v3.4.0.** Brings SDK-side hardening that applies to this plugin directly: `Allocator` now rewinds the VM stack as well as the heap on drop, so a partially-pushed callback argument list in `callback.rs` can no longer leave the AMX stack unbalanced; `UnsizedBuffer::into_sized_buffer` clamps requested sizes to the VM data region; and `AmxString::to_bytes` no longer panics on a corrupted length.
+- **File logging now uses the SDK's turnkey logger** instead of the hand-rolled writer. The console/file split is preserved — short, sanitized lines on the server console, full detail only in the file — by keeping the two channels separate: the SDK logger owns the file (`also_to_server(false)`), while the console is driven by `samp::plugin::logger()` converted into a standalone sink.
+- Levels in `logs/mysql.log` are now written as `WARN` rather than `WARNING`.
+- **Corrected the open.mp native-component registration instructions.** Native components are auto-discovered from the `components/` folder — the folder *is* the registration and no `config.json` entry is needed. Only legacy plugins must be declared under `pawn.legacy_plugins`. The old instructions told everyone to add an entry that does nothing. Fixed in the README, `docs/installation.md`, the examples README and the 1.1.0 changelog entry.
+- **Release notes are now assembled by the workflow** from the matching `## [X.Y.Z]` section of this file, plus the `New Contributors` / `Full Changelog` appendix from the GitHub API and an artifacts footer. `RELEASE.md` was dropped as a drift hazard, as was the duplicated root `CNAME` (only `docs/CNAME` is deployed). Version literals were stripped from `CHECKLIST.md` and `docs/api-reference.md` so `Cargo.toml` stays the single source of truth.
+- **Build: new toolchain requirements, because the TLS backend compiles C.** Until now the Linux build was pure Rust; `ring` changes that.
+  - The **Linux i686 target needs 32-bit C support** (`gcc-multilib` / `glibc-devel.i686` / `lib32-glibc`). Both build scripts now check `gcc -m32` up front and name the package, since cc-rs otherwise fails with an opaque missing-header error. `scripts/build-windows.sh` checks this inside WSL as well and points at `--docker` as the alternative.
+  - **Cross-compiling the `.dll` from Linux needs `llvm-lib`**, which cargo-xwin does not ship. `scripts/build-linux.sh` locates it under `/usr/lib/llvm-*/bin` automatically.
+  - Building **on** Windows needs neither: MSVC's `lib.exe` does the archiving and `ring` ships pre-assembled objects, so NASM is not required.
+
+### Removed
+
+- `chrono` dependency — log timestamps come from the SDK logger.
+
+### Security & governance
+
+Supply-chain hardening of the repository itself. None of this changes the shipped plugin, but it constrains what a compromised dependency or workflow step can do.
+
+- **Every GitHub Action is pinned by commit SHA**, with a trailing `# vX` comment so the intent stays readable. A mutable tag can be repointed at new code by whoever controls the action; a SHA cannot. Two actions take their parameter *from the ref* (`dtolnay/rust-toolchain`, `taiki-e/install-action`), so they are pinned by SHA **and** pass `toolchain:` / `tool:` explicitly — pinning alone would have broken them.
+- **`docs/requirements.txt` is now a hash-pinned lockfile**, compiled from the new `docs/requirements.in` with `pip-compile --generate-hashes` and installed with `pip install --require-hashes`. Every MkDocs dependency is verified against a known digest before it runs in CI.
+- **`.github/dependabot.yml`** — weekly updates for `github-actions`, `cargo` and the `pip` requirements under `/docs`. Pinning trades automatic updates for reproducibility; this pays that back. Note Dependabot does not bump git dependencies, so the `samp` revision stays a manual step.
+- **OpenSSF Scorecard workflow** — analyses the repository's security posture and publishes the result.
+- **Least-privilege tokens** — `permissions: {}` at the top of the Scorecard and Release Drafter workflows, with jobs opting into exactly what they need, and `persist-credentials: false` on every checkout so a compromised step cannot reuse the git credentials.
+
 ## [1.1.1] — 2026/05/18
 
 ### Fixed

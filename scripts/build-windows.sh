@@ -75,6 +75,17 @@ build_windows() {
 build_linux_wsl() {
   local target="i686-unknown-linux-gnu"
   local wsl_root="/mnt${ROOT_DIR}"
+
+  # The TLS backend (`ring`) compiles C and 32-bit assembly for this target, so
+  # the WSL distro needs 32-bit libc headers. A stock WSL install does not have
+  # them, and cc-rs reports a missing header rather than the real cause.
+  if ! wsl bash -c "echo 'int main(){return 0;}' | gcc -m32 -x c - -o /dev/null" >/dev/null 2>&1; then
+    log_err "WSL is missing 32-bit C support ('gcc -m32' cannot build)."
+    log_err "Install it inside WSL, e.g.:  sudo apt install gcc-multilib g++-multilib"
+    log_err "Or build the .so through Docker instead:  ./scripts/build-windows.sh --docker"
+    exit 1
+  fi
+
   log_step "Building: $target (via WSL)"
   wsl bash -c "rustup target add '$target' 2>/dev/null; cd '$wsl_root' && cargo build --profile '$PROFILE' --target '$target'"
 

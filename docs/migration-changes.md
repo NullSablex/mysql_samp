@@ -74,7 +74,7 @@ Every query is now non-blocking. The cache is only valid inside the callback (or
 | `MySQL:mysql_connect(host, user, pass, db, MySQLOpt:opt)` | `mysql_connect(host, user, pass, db, options)` |
 | `MySQLOpt:mysql_init_options()` | `mysql_options_new()` |
 | `mysql_set_option(opt, type, ...)` | `mysql_options_set_int(opt, type, val)` / `mysql_options_set_str(opt, type, val[])` |
-| `mysql_escape_string(src, dest, max_len, MySQL:handle)` | `mysql_escape_string(src, dest, max_len)` |
+| `mysql_escape_string(src, dest, max_len, MySQL:handle)` | `mysql_escape_string(src, dest, max_len, connId)` |
 | `mysql_stat(dest, max_len, MySQL:handle)` | `mysql_status(connId, dest, max_len)` |
 | `mysql_error(dest, max_len, MySQL:handle)` | `mysql_error(connId, dest, max_len)` |
 | `mysql_errno(MySQL:handle)` | `mysql_errno(connId)` |
@@ -270,7 +270,7 @@ Same parameters, no `MySQL:` tag on the last one.
 1. Replace `#include <a_mysql>` with `#include <mysql_samp>`.
 2. Replace `mysql_tquery` with `mysql_query`.
 3. Replace `%s` (raw) with `%r` in `mysql_format` wherever the old `%s` was intentionally unescaped.
-4. Replace `mysql_escape_string(..., MySQL:handle)` with `mysql_escape_string(src, dest, max_len)` (no handle).
+4. Keep the connection on `mysql_escape_string` — it now selects the escaping rules for the server's `sql_mode`. Better still, move player input to prepared statements (`mysql_stmt_*`).
 5. Replace `cache_num_rows()` with `cache_get_row_count()`.
 6. Convert `cache_get_value_*_int` / `cache_get_value_*_float` from by-ref to return value.
 7. Convert `cache_is_value_*_null` from by-ref to return value.
