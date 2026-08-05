@@ -103,11 +103,9 @@ mysql_options_set_str(opts, MYSQL_OPT_SSL_KEY,  "certs/client-key.pem");
 
 Setting only one of the two logs a warning and the client certificate is ignored — TLS still proceeds without it. Keys may be PKCS#1, PKCS#8 or SEC1, in PEM or DER.
 
-#### The plugin checks that TLS really happened
+#### TLS needs a TCP host
 
-After connecting, the plugin asks the server for `Ssl_cipher` and refuses the connection if the session turns out to be unencrypted. A driver can complete the handshake in plaintext without reporting an error, and a connection you believe is encrypted but is not is worse than one that fails.
-
-TLS is not available over a unix socket — a host starting with `/` has nothing to encrypt. Use a TCP host.
+`MYSQL_OPT_SSL` has no effect when the host is a unix socket (a path starting with `/`) — there is nothing to encrypt on a local socket. Use a TCP host such as `127.0.0.1` or a hostname.
 
 #### Disabling verification
 

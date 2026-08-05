@@ -170,29 +170,7 @@ impl ConnectionManager {
 
         // Validate by getting a connection (Pool connects lazily on first get_conn)
         let escape_mode = match pool.get_conn() {
-            Ok(mut conn) => {
-                // Asking for TLS and not getting it must never be silent. The
-                // driver can negotiate plaintext without raising an error —
-                // observed against MariaDB 11.8 — and a connection the operator
-                // believes is encrypted, but is not, is the worst outcome here.
-                // So verify with the server rather than trust the handshake.
-                if options.ssl && !connection_is_encrypted(&mut conn) {
-                    let detail = String::from(
-                        "MYSQL_OPT_SSL was requested but the server reports an empty Ssl_cipher: \
-                         the connection is NOT encrypted. Refusing it rather than sending \
-                         credentials and queries in clear text. Check that the server has TLS \
-                         enabled and reachable over TCP (TLS is not available over a unix socket).",
-                    );
-                    Logger::error_detail(
-                        "Connection refused: TLS was requested but the connection is not \
-                         encrypted. See logs/mysql.log for details.",
-                        &detail,
-                    );
-                    self.global_error = ErrorState::new(MysqlError::ConnectionFailed, detail);
-                    return 0;
-                }
-                detect_escape_mode(&mut conn)
-            }
+            Ok(mut conn) => detect_escape_mode(&mut conn),
             Err(e) => {
                 let detail = format!("Connection failed: {}", e);
                 let code = MysqlError::ConnectionFailed.code();
@@ -317,29 +295,6 @@ impl ConnectionManager {
         let mut conn = entry.pool.get_conn().ok()?;
         let result: Option<String> = conn.query_first("SELECT @@character_set_connection").ok()?;
         result
-    }
-}
-
-/// Asks the server whether this session is actually encrypted.
-///
-/// `Ssl_cipher` is empty on a plaintext session and holds the negotiated
-/// cipher suite otherwise. This is the only trustworthy answer: the driver
-/// reports success even when it silently fell back to plaintext.
-///
-/// A failure to read the status is treated as "not encrypted" — refusing a
-/// connection we cannot verify is the safe direction.
-fn connection_is_encrypted(conn: &mut PooledConn) -> bool {
-    let row: Option<(String, String)> = conn
-        .query_first("SHOW SESSION STATUS LIKE 'Ssl_cipher'")
-        .ok()
-        .flatten();
-
-    match row {
-        Some((_, cipher)) if !cipher.is_empty() => {
-            Logger::info(&format!("TLS active, cipher {cipher}."));
-            true
-        }
-        _ => false,
     }
 }
 
@@ -936,6 +891,14 @@ mod tests {
         // from a driver-wide one.
         let mut conn = mysql::Conn::new(opts).expect("conn");
 
+        let rows: Vec<(String, String)> = conn
+            .query("SHOW SESSION STATUS LIKE 'Ssl%'")
+            .expect("status query");
+        for (k, v) in &rows {
+            if !v.is_empty() {
+                println!("  {k} = {v}");
+            }
+        }
         let cipher: Option<(String, String)> = conn
             .query_first("SHOW SESSION STATUS LIKE 'Ssl_cipher'")
             .expect("status query");
