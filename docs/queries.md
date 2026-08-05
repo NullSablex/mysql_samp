@@ -186,6 +186,7 @@ native bool:mysql_stmt_bind_str(stmtId, const value[]);
 native bool:mysql_stmt_bind_null(stmtId);
 native bool:mysql_stmt_reset(stmtId);
 native bool:mysql_stmt_execute(stmtId, const callback[] = "", const format[] = "", {Float,_}:...);
+native bool:mysql_stmt_pexecute(stmtId, const callback[] = "", const format[] = "", {Float,_}:...);
 native bool:mysql_stmt_close(stmtId);
 ```
 
@@ -197,7 +198,7 @@ mysql_stmt_execute(stmt, "OnPlayersFound", "d", playerid);
 mysql_stmt_close(stmt);
 ```
 
-`mysql_stmt_execute` is non-blocking and FIFO-ordered, exactly like `mysql_query`, and the result reaches the callback through the same cache stack.
+`mysql_stmt_execute` is non-blocking and FIFO-ordered, exactly like `mysql_query`, and the result reaches the callback through the same cache stack. `mysql_stmt_pexecute` is the parallel counterpart, matching `mysql_pquery`: no ordering guarantee, dispatched as soon as it completes. Choose between them on the same grounds as [`mysql_query` vs `mysql_pquery`](#choosing-between-mysql_query-and-mysql_pquery).
 
 Notes:
 
@@ -235,6 +236,28 @@ Notes:
 - **Use `mysql_transaction_add_stmt` for player input** — it copies a prepared statement together with its bound values.
 - **No auto-reconnect retry.** Replaying a transaction after a mid-flight connection loss could re-apply steps the server already committed, so a dropped connection aborts and reports instead.
 - Build a batch and change your mind? Call `mysql_transaction_destroy`.
+
+## Running a .sql file
+
+```pawn
+native bool:mysql_query_file(connId, const path[], const callback[] = "", const format[] = "", {Float,_}:...);
+```
+
+Reads a file and runs its statements in order on one connection, non-blocking like every other query here. Useful for schema setup and migrations.
+
+```pawn
+mysql_query_file(g_mysql, "scripts/schema.sql", "OnSchemaReady");
+```
+
+The script is split on `;` **outside** string literals and comments, so a semicolon inside `'...'`, `"..."`, a backtick identifier, `-- …`, `# …` or `/* … */` does not break a statement in two. Comment-only fragments and a trailing semicolon are dropped rather than sent as empty statements.
+
+Notes:
+
+- **It is not a transaction.** These files are usually schema work, and DDL commits implicitly in MySQL, so wrapping them would imply an atomicity the server does not provide. If a statement fails, execution stops there and **everything before it stays applied**.
+- **The error names the position** — `statement 7 of 23: …` — which matters in a file with dozens of statements.
+- **The callback receives the cache of the last statement**, and `cache_get_result_count()` reports how many result sets the script produced.
+- **The path is a file your gamemode opens.** Treat it as such: do not build it from player input.
+- The plugin logs how many statements it is about to run, at `INFO`.
 
 ## Inspecting the queue
 

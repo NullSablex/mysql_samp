@@ -73,6 +73,45 @@ mysql_options_set_int(opts, MYSQL_OPT_CONNECT_TIMEOUT, 10);
 g_mysql = mysql_connect("db.example.com", "user", "pass", "samp_db", opts);
 ```
 
+## mysql_connect_file
+
+```pawn
+native mysql_connect_file(const path[] = "mysql.ini", options = 0);
+```
+
+Reads the credentials from a file instead of the gamemode source. The `.pwn` is usually in version control; the config file is not, which is the point.
+
+```ini
+# mysql.ini — keep this out of your repository
+host     = 127.0.0.1
+user     = samp
+password = s3cr3t
+database = samp_server
+```
+
+```pawn
+g_mysql = mysql_connect_file("mysql.ini");
+```
+
+Format:
+
+- `key = value`, one per line. Keys are case-insensitive and whitespace is trimmed.
+- `#` and `;` start a comment.
+- Wrap a value in quotes to keep leading or trailing spaces: `password = "  spaced  "`.
+- Only the first `=` splits the line, so a password may contain `=`.
+- `host`, `user` and `database` are required. `password` may be absent or empty — a local socket account often has none.
+- Unknown keys are ignored, so a file shared with another tool still works.
+
+Connection **options** are not part of the file — they stay with `mysql_options_new` and the second parameter, so there is one place to look for tuning:
+
+```pawn
+new opts = mysql_options_new();
+mysql_options_set_int(opts, MYSQL_OPT_SSL, 1);
+g_mysql = mysql_connect_file("mysql.ini", opts);
+```
+
+On failure the plugin logs which **key** was missing, never a value, and sets `mysql_errno(0)` to `MYSQL_ERROR_INVALID_OPTIONS`. The file's contents are never written to the log.
+
 ## mysql_close
 
 ```pawn
@@ -145,6 +184,14 @@ printf("charset = %s", charset);  // utf8mb4
 - Connections are created lazily on the first `get_conn()`.
 - The plugin does not expose the pool size — the `mysql` crate manages it internally.
 - A query that fails with a connection-lost error (the mysql crate maps these to error code `0`) is retried once by `attempt_query` when `MYSQL_OPT_AUTO_RECONNECT` is enabled (the default).
+
+## Pool size
+
+```pawn
+mysql_options_set_int(opts, MYSQL_OPT_POOL_SIZE, 16);
+```
+
+Caps how many connections the pool may open. Without it the driver's default applies (a maximum of 100). Lower it when the MySQL server has a tight `max_connections` and several game servers share it; the value must be at least 1.
 
 ## What happens on failure
 

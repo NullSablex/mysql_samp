@@ -28,9 +28,11 @@ The same binary loads on SA-MP and on Open Multiplayer — natively as a compone
 
 - **Zero external dependencies** — no `libmysqlclient`, no OpenSSL. The MySQL protocol and TLS (via rustls) are compiled directly into the binary.
 - **All queries are non-blocking** — `mysql_query` runs on background threads with FIFO ordering. The server never stalls.
-- **Connection pool** — automatic reuse through `mysql::Pool`, thread-safe by design.
+- **Connection pool** — automatic reuse through `mysql::Pool`, thread-safe by design, with a configurable ceiling.
+- **Credentials out of the source** — `mysql_connect_file` reads them from a config file your repository does not have to carry.
+- **Schema scripts** — `mysql_query_file` runs a `.sql` file's statements in order, non-blocking.
 - **Built-in ORM** — maps Pawn variables to columns with CRUD helpers.
-- **Cache system** — results accessible through an automatic stack or persisted manually with `cache_save`.
+- **Cache system** — results accessible through an automatic stack or persisted manually with `cache_save`, including multi-result sets from stored procedures.
 - **Prepared statements** — `mysql_stmt_*` binds values server-side over the binary protocol. Nothing to escape, so nothing to get wrong: the safe way to handle player input.
 - **Transactions** — `mysql_transaction_*` runs a batch atomically on one connection and rolls it back if any step fails.
 - **Argon2id password hashing** — `mysql_hash_password` / `mysql_verify_password`, off the server thread on a bounded worker pool. The plaintext never reaches SQL, so it never reaches your logs.
