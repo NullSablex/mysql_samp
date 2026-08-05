@@ -101,7 +101,7 @@ public OnGameModeExit() {
 }
 ```
 
-Browse the [examples/](examples/) folder for self-contained `.pwn` scripts covering connection setup, threaded queries, ORM, TLS, error handling, prepared statements, transactions and password hashing. For anything carrying player input, start with [`08_prepared_statements.pwn`](examples/08_prepared_statements.pwn). The plugin natives (`mysql_*`, `cache_*`, `orm_*`) and the `OnQueryError` forward are identical across SA-MP and Open Multiplayer, so every example builds and runs on both — the only thing that differs between servers is the installation path documented above.
+Browse the [examples/](examples/) folder for self-contained `.pwn` scripts covering connection setup, threaded queries, ORM, TLS, error handling, prepared statements, transactions, password hashing, config files, `.sql` scripts and multi-result sets. For anything carrying player input, start with [`08_prepared_statements.pwn`](examples/08_prepared_statements.pwn). The plugin natives (`mysql_*`, `cache_*`, `orm_*`) and the `OnQueryError` forward are identical across SA-MP and Open Multiplayer, so every example builds and runs on both — the only thing that differs between servers is the installation path documented above.
 
 ## Documentation
 

@@ -16,6 +16,14 @@ Runnable Pawn snippets showing how to use the plugin on **SA-MP** and **Open Mul
 | [`08_prepared_statements.pwn`](08_prepared_statements.pwn) | `mysql_stmt_*` — **the safe way to pass player input** |
 | [`09_transactions.pwn`](09_transactions.pwn) | `mysql_transaction_*` — all-or-nothing batches |
 | [`10_password_hashing.pwn`](10_password_hashing.pwn) | Argon2id: `mysql_hash_password` / `mysql_verify_password` |
+| [`11_config_and_scripts.pwn`](11_config_and_scripts.pwn) | `mysql_connect_file`, `mysql_query_file`, multiple result sets |
+
+### Companion files
+
+| File | Used by |
+|---|---|
+| [`mysql.ini.example`](mysql.ini.example) | Template for `mysql_connect_file`. Copy to `mysql.ini`, fill it in, and **add it to `.gitignore`** |
+| [`schema.sql`](schema.sql) | Fixture for `mysql_query_file`. Deliberately contains semicolons inside comments and a string literal, so it also exercises the statement splitter |
 
 ## Compiling
 
@@ -55,7 +63,7 @@ Drop the binary into `plugins/` and declare it under `legacy_plugins` in `config
 
 ## Conventions used across the examples
 
-- Connection credentials are placed at the top as `#define`s — replace with values from a config file in real code.
+- Connection credentials are placed at the top as `#define`s — replace with values from a config file in real code. [`11_config_and_scripts.pwn`](11_config_and_scripts.pwn) shows how, with `mysql_connect_file`.
 - One global `g_MysqlConn` holds the connection id; `0` means "not connected".
 - Threaded callbacks read from the implicit active cache; no need to call `cache_set_active` unless you persisted the cache with `cache_save`.
 - All queries are non-blocking — the gamemode never waits on MySQL. That includes password hashing.
