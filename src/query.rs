@@ -7,7 +7,9 @@ use std::thread;
 use mysql::Pool;
 
 use crate::cache::CacheEntry;
-use crate::connection::{QueryError, attempt_prepared, attempt_query, attempt_transaction};
+use crate::connection::{
+    QueryError, attempt_prepared, attempt_query, attempt_script, attempt_transaction,
+};
 
 /// Parameter type for callback invocation.
 #[derive(Debug, Clone)]
@@ -138,6 +140,83 @@ impl QueryManager {
                 },
                 Err(e) => QueryResult {
                     cache: CacheEntry::empty(query),
+                    callback,
+                    conn_id,
+                    error: Some(e),
+                    ordered: true,
+                    sequence,
+                },
+            };
+            let _ = sender.send(result);
+            in_flight.fetch_sub(1, Ordering::Relaxed);
+        });
+    }
+
+    /// Parallel counterpart of [`Self::submit_prepared`] — no ordering
+    /// guarantee, dispatched as soon as it completes.
+    pub fn submit_pprepared(
+        &mut self,
+        pool: Pool,
+        query: String,
+        params: Vec<mysql::Value>,
+        callback: Option<CallbackInfo>,
+        conn_id: i32,
+        auto_reconnect: bool,
+    ) {
+        let sender = self.sender.clone();
+        self.in_flight.fetch_add(1, Ordering::Relaxed);
+        let in_flight = self.in_flight.clone();
+
+        thread::spawn(move || {
+            let result = match attempt_prepared(&pool, &query, params, auto_reconnect) {
+                Ok(cache) => QueryResult {
+                    cache,
+                    callback,
+                    conn_id,
+                    error: None,
+                    ordered: false,
+                    sequence: 0,
+                },
+                Err(e) => QueryResult {
+                    cache: CacheEntry::empty(query),
+                    callback,
+                    conn_id,
+                    error: Some(e),
+                    ordered: false,
+                    sequence: 0,
+                },
+            };
+            let _ = sender.send(result);
+            in_flight.fetch_sub(1, Ordering::Relaxed);
+        });
+    }
+
+    /// Submits a script (several statements from a file), ordered.
+    pub fn submit_script(
+        &mut self,
+        pool: Pool,
+        statements: Vec<String>,
+        callback: Option<CallbackInfo>,
+        conn_id: i32,
+    ) {
+        let sequence = self.next_sequence;
+        self.next_sequence += 1;
+        let sender = self.sender.clone();
+        self.in_flight.fetch_add(1, Ordering::Relaxed);
+        let in_flight = self.in_flight.clone();
+
+        thread::spawn(move || {
+            let result = match attempt_script(&pool, &statements) {
+                Ok(cache) => QueryResult {
+                    cache,
+                    callback,
+                    conn_id,
+                    error: None,
+                    ordered: true,
+                    sequence,
+                },
+                Err(e) => QueryResult {
+                    cache: CacheEntry::empty(String::new()),
                     callback,
                     conn_id,
                     error: Some(e),

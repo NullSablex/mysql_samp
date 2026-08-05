@@ -8,11 +8,27 @@ const MAX_SAVED_CACHES: usize = 1024;
 /// A single row: Vec of Option<String> where None represents SQL NULL.
 pub type CacheRow = Vec<Option<String>>;
 
-/// Stores the result of a single query execution.
+/// One result set: rows plus the column metadata that describes them.
+///
+/// A single `mysql_query` normally produces one of these. A script run through
+/// `mysql_query_file`, or a `CALL` to a stored procedure, produces several —
+/// hence the vector in [`CacheEntry`].
+#[derive(Clone, Default)]
+pub struct ResultSet {
+    pub rows: Vec<CacheRow>,
+    pub field_names: Vec<String>,
+    pub field_types: Vec<u8>,
+}
+
+/// Stores the result of a query execution.
+///
+/// Every reader below (`row_count`, `field_name`, `get_value`, …) reports on
+/// the **selected** result set, which is the first one until `set_result`
+/// changes it. Queries that return a single set therefore behave exactly as
+/// they always did.
 pub struct CacheEntry {
-    rows: Vec<CacheRow>,
-    field_names: Vec<String>,
-    field_types: Vec<u8>,
+    results: Vec<ResultSet>,
+    active_result: usize,
     affected_rows: u64,
     insert_id: u64,
     warning_count: u16,
@@ -22,10 +38,8 @@ pub struct CacheEntry {
 
 impl CacheEntry {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        rows: Vec<CacheRow>,
-        field_names: Vec<String>,
-        field_types: Vec<u8>,
+    pub fn with_results(
+        results: Vec<ResultSet>,
         affected_rows: u64,
         insert_id: u64,
         warning_count: u16,
@@ -33,9 +47,14 @@ impl CacheEntry {
         query_string: String,
     ) -> Self {
         Self {
-            rows,
-            field_names,
-            field_types,
+            // An empty vector would make every reader a special case; one empty
+            // set keeps them uniform.
+            results: if results.is_empty() {
+                vec![ResultSet::default()]
+            } else {
+                results
+            },
+            active_result: 0,
             affected_rows,
             insert_id,
             warning_count,
@@ -45,38 +64,66 @@ impl CacheEntry {
     }
 
     pub fn empty(query_string: String) -> Self {
+        Self::with_results(Vec::new(), 0, 0, 0, 0, query_string)
+    }
+
+    /// How many result sets the query produced. Always at least 1.
+    pub fn result_count(&self) -> usize {
+        self.results.len()
+    }
+
+    /// Selects which result set the readers report on. Out-of-range indices are
+    /// rejected and leave the selection untouched.
+    pub fn set_result(&mut self, index: usize) -> bool {
+        if index >= self.results.len() {
+            return false;
+        }
+        self.active_result = index;
+        true
+    }
+
+    /// The selected set. The index is kept in range by `set_result`, and the
+    /// vector is never empty, so this always resolves.
+    fn active(&self) -> &ResultSet {
+        &self.results[self.active_result]
+    }
+
+    /// Deep copy, used by `cache_save`. Copies **every** result set, not just
+    /// the selected one — saving a cache and then switching result would
+    /// otherwise silently lose data.
+    pub fn duplicate(&self) -> Self {
         Self {
-            rows: Vec::new(),
-            field_names: Vec::new(),
-            field_types: Vec::new(),
-            affected_rows: 0,
-            insert_id: 0,
-            warning_count: 0,
-            exec_time_us: 0,
-            query_string,
+            results: self.results.clone(),
+            active_result: self.active_result,
+            affected_rows: self.affected_rows,
+            insert_id: self.insert_id,
+            warning_count: self.warning_count,
+            exec_time_us: self.exec_time_us,
+            query_string: self.query_string.clone(),
         }
     }
 
     pub fn row_count(&self) -> usize {
-        self.rows.len()
+        self.active().rows.len()
     }
 
     pub fn field_count(&self) -> usize {
-        self.field_names.len()
+        self.active().field_names.len()
     }
 
     pub fn field_name(&self, index: usize) -> Option<&str> {
-        self.field_names.get(index).map(|s| s.as_str())
+        self.active().field_names.get(index).map(|s| s.as_str())
     }
 
     pub fn field_index(&self, name: &str) -> Option<usize> {
-        self.field_names
+        self.active()
+            .field_names
             .iter()
             .position(|f| f.eq_ignore_ascii_case(name))
     }
 
     pub fn get_value(&self, row: usize, col: usize) -> Option<&Option<String>> {
-        self.rows.get(row).and_then(|r| r.get(col))
+        self.active().rows.get(row).and_then(|r| r.get(col))
     }
 
     pub fn affected_rows(&self) -> u64 {
@@ -100,7 +147,7 @@ impl CacheEntry {
     }
 
     pub fn field_type(&self, index: usize) -> Option<u8> {
-        self.field_types.get(index).copied()
+        self.active().field_types.get(index).copied()
     }
 }
 
@@ -138,6 +185,14 @@ impl CacheManager {
     /// Returns a reference to the currently active cache.
     /// If a manual cache is set via `set_active`, returns that.
     /// Otherwise returns the top of the stack.
+    /// Mutable view of the active cache, needed by `cache_set_result`.
+    pub fn get_active_mut(&mut self) -> Option<&mut CacheEntry> {
+        if let Some(id) = self.manual_active {
+            return self.saved.get_mut(&id);
+        }
+        self.active_stack.last_mut()
+    }
+
     pub fn get_active(&self) -> Option<&CacheEntry> {
         if let Some(id) = self.manual_active {
             return self.saved.get(&id);
@@ -159,16 +214,7 @@ impl CacheManager {
                 Some(a) => a,
                 None => return 0,
             };
-            CacheEntry::new(
-                active.rows.clone(),
-                active.field_names.clone(),
-                active.field_types.clone(),
-                active.affected_rows,
-                active.insert_id,
-                active.warning_count,
-                active.exec_time_us,
-                active.query_string.clone(),
-            )
+            active.duplicate()
         };
 
         let id = self.next_saved_id;
@@ -217,11 +263,114 @@ impl CacheManager {
 }
 
 #[cfg(test)]
+mod multi_result_tests {
+    use super::*;
+
+    fn set(name: &str, value: &str) -> ResultSet {
+        ResultSet {
+            rows: vec![vec![Some(value.to_string())]],
+            field_names: vec![name.to_string()],
+            field_types: vec![253],
+        }
+    }
+
+    fn two_sets() -> CacheEntry {
+        CacheEntry::with_results(
+            vec![set("a", "first"), set("b", "second")],
+            0,
+            0,
+            0,
+            0,
+            "CALL p()".to_string(),
+        )
+    }
+
+    #[test]
+    fn a_single_set_query_reports_one_result() {
+        let entry = CacheEntry::with_results(vec![set("a", "x")], 0, 0, 0, 0, String::new());
+        assert_eq!(entry.result_count(), 1);
+    }
+
+    #[test]
+    fn an_empty_entry_still_reports_one_result() {
+        // Readers must never hit an empty vector, so `empty` seeds one set.
+        let entry = CacheEntry::empty("SELECT 1".to_string());
+        assert_eq!(entry.result_count(), 1);
+        assert_eq!(entry.row_count(), 0);
+    }
+
+    #[test]
+    fn the_first_set_is_selected_by_default() {
+        let entry = two_sets();
+        assert_eq!(entry.result_count(), 2);
+        assert_eq!(entry.field_name(0), Some("a"));
+        assert_eq!(entry.get_value(0, 0), Some(&Some("first".to_string())));
+    }
+
+    #[test]
+    fn set_result_switches_every_reader() {
+        let mut entry = two_sets();
+        assert!(entry.set_result(1));
+        assert_eq!(entry.field_name(0), Some("b"));
+        assert_eq!(entry.get_value(0, 0), Some(&Some("second".to_string())));
+    }
+
+    #[test]
+    fn an_out_of_range_index_is_rejected_and_changes_nothing() {
+        let mut entry = two_sets();
+        assert!(!entry.set_result(2));
+        assert!(!entry.set_result(99));
+        assert_eq!(
+            entry.field_name(0),
+            Some("a"),
+            "selection must be untouched"
+        );
+    }
+
+    #[test]
+    fn duplicate_keeps_every_set_and_the_selection() {
+        let mut entry = two_sets();
+        entry.set_result(1);
+
+        let copy = entry.duplicate();
+        assert_eq!(copy.result_count(), 2, "cache_save must not drop sets");
+        assert_eq!(copy.field_name(0), Some("b"), "selection is preserved");
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
+    /// Builds a single-result-set entry, which is what most of these tests
+    /// care about. Multi-set behaviour is covered separately below.
+    #[allow(clippy::too_many_arguments)]
+    fn entry(
+        rows: Vec<CacheRow>,
+        field_names: Vec<String>,
+        field_types: Vec<u8>,
+        affected_rows: u64,
+        insert_id: u64,
+        warning_count: u16,
+        exec_time_us: u128,
+        query_string: String,
+    ) -> CacheEntry {
+        CacheEntry::with_results(
+            vec![ResultSet {
+                rows,
+                field_names,
+                field_types,
+            }],
+            affected_rows,
+            insert_id,
+            warning_count,
+            exec_time_us,
+            query_string,
+        )
+    }
+
     fn sample_entry() -> CacheEntry {
-        CacheEntry::new(
+        entry(
             vec![
                 vec![Some("1".to_string()), Some("Alice".to_string()), None],
                 vec![
@@ -312,7 +461,7 @@ mod tests {
 
     #[test]
     fn entry_affected_rows_and_insert_id() {
-        let entry = CacheEntry::new(
+        let entry = entry(
             vec![],
             vec![],
             vec![],
@@ -328,13 +477,13 @@ mod tests {
 
     #[test]
     fn entry_warning_count() {
-        let entry = CacheEntry::new(vec![], vec![], vec![], 0, 0, 3, 0, "".to_string());
+        let entry = entry(vec![], vec![], vec![], 0, 0, 3, 0, "".to_string());
         assert_eq!(entry.warning_count(), 3);
     }
 
     #[test]
     fn entry_exec_time_conversion() {
-        let entry = CacheEntry::new(
+        let entry = entry(
             vec![],
             vec![],
             vec![],

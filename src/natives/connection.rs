@@ -17,18 +17,9 @@ impl MysqlPlugin {
         database: &AmxString,
         options_id: i32,
     ) -> i32 {
-        let opts = if options_id == 0 {
-            MysqlOptions::default()
-        } else {
-            match self.options.get(options_id) {
-                Some(o) => o.clone(),
-                None => {
-                    Logger::error("Connection failed: invalid options handle.");
-                    self.connections.global_error =
-                        ErrorState::new(MysqlError::InvalidOptions, "Invalid options handle.");
-                    return 0;
-                }
-            }
+        let opts = match self.resolve_options(options_id) {
+            Some(opts) => opts,
+            None => return 0,
         };
 
         let id = self
@@ -42,6 +33,71 @@ impl MysqlPlugin {
         }
 
         id
+    }
+
+    /// mysql_connect_file(const path[] = "mysql.ini", options = 0)
+    ///
+    /// Reads host / user / password / database from a `key = value` file and
+    /// connects. Keeps credentials out of the gamemode source, which is
+    /// usually in version control while the config file is not.
+    ///
+    /// Options stay with `mysql_options_new` — the file carries credentials
+    /// only, so there is one place to look for connection tuning.
+    #[native(name = "mysql_connect_file")]
+    pub fn mysql_connect_file(&mut self, _amx: &Amx, path: &AmxString, options_id: i32) -> i32 {
+        let path = path.to_string();
+
+        let cfg = match crate::config::load(std::path::Path::new(&path)) {
+            Ok(cfg) => cfg,
+            Err(err) => {
+                // The detail names the file and the offending key, never a
+                // value — the file holds a password.
+                let detail = format!("Connection file '{path}' rejected: {}", err.message());
+                Logger::error_detail(
+                    &format!(
+                        "Connection failed (error {}). See logs/mysql.log for details.",
+                        MysqlError::InvalidOptions.code()
+                    ),
+                    &detail,
+                );
+                self.connections.global_error = ErrorState::new(MysqlError::InvalidOptions, detail);
+                return 0;
+            }
+        };
+
+        let opts = match self.resolve_options(options_id) {
+            Some(opts) => opts,
+            None => return 0,
+        };
+
+        let id =
+            self.connections
+                .connect(&cfg.host, &cfg.user, &cfg.password, &cfg.database, &opts);
+
+        if id > 0 {
+            Logger::info(&format!("Connection {} established from '{}'.", id, path));
+        } else {
+            Logger::info("Connection failed.");
+        }
+
+        id
+    }
+
+    /// Resolves an options handle, reporting and returning `None` when it is
+    /// unknown. `0` means "no options" and yields the defaults.
+    fn resolve_options(&mut self, options_id: i32) -> Option<MysqlOptions> {
+        if options_id == 0 {
+            return Some(MysqlOptions::default());
+        }
+        match self.options.get(options_id) {
+            Some(o) => Some(o.clone()),
+            None => {
+                Logger::error("Connection failed: invalid options handle.");
+                self.connections.global_error =
+                    ErrorState::new(MysqlError::InvalidOptions, "Invalid options handle.");
+                None
+            }
+        }
     }
 
     #[native(name = "mysql_status")]

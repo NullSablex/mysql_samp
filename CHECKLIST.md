@@ -7,7 +7,7 @@ Coverage of the MySQL R41-4 (BlueG / maddinat0r) Pawn API by **mysql_samp**. Sou
 | Feature | R41-4 | mysql_samp | Notes |
 |---|---|---|---|
 | `mysql_connect` | Yes | Yes | No custom Pawn tags |
-| `mysql_connect_file` | Yes | — | `.ini`-based connect (not supported) |
+| `mysql_connect_file` | Yes | Yes | `key = value` file with host / user / password / database |
 | `mysql_close` | Yes | Yes | |
 | `mysql_errno` | Yes | Yes | Returns the MySQL error code (1062, 1045, …) or `0` for no error / `MYSQL_ERROR_*` (1..=8) for plugin-side errors |
 | `mysql_error` | Yes | Yes | Writes the last error message into the destination buffer |
@@ -30,14 +30,14 @@ Coverage of the MySQL R41-4 (BlueG / maddinat0r) Pawn API by **mysql_samp**. Sou
 | `mysql_global_options` | Yes | — | Global option pool (not supported) |
 | AUTO_RECONNECT | Yes | Yes | `MYSQL_OPT_AUTO_RECONNECT`; one-shot retry on connection-loss errors |
 | MULTI_STATEMENTS | Yes | — | Always on in the `mysql` crate and not disableable through its API |
-| POOL_SIZE | Yes | — | We use `mysql::Pool` internally; size is not exposed |
+| POOL_SIZE | Yes | Yes | `MYSQL_OPT_POOL_SIZE` caps the pool maximum |
 | SERVER_PORT | Yes | Yes | `MYSQL_OPT_PORT` (`u16`; negative or `> 65535` rejected) |
 | SSL_ENABLE | Yes | Yes | `MYSQL_OPT_SSL` — rustls compiled in, no system library needed |
 | SSL_KEY_FILE | Yes | Yes | `MYSQL_OPT_SSL_KEY` (mutual TLS; needs `MYSQL_OPT_SSL_CERT`) |
 | SSL_CERT_FILE | Yes | Yes | `MYSQL_OPT_SSL_CERT` (mutual TLS; needs `MYSQL_OPT_SSL_KEY`) |
 | SSL_CA_FILE | Yes | Yes | `MYSQL_OPT_SSL_CA`. Without it only the bundled webpki roots are trusted, **not** the OS trust store |
-| SSL_CA_PATH | Yes | — | |
-| SSL_CIPHER | Yes | — | |
+| SSL_CA_PATH | Yes | — | The driver's `SslOpts` takes a CA **file**, not a directory. Use `MYSQL_OPT_SSL_CA` |
+| SSL_CIPHER | Yes | — | Not expressible: rustls fixes the cipher suites per crypto provider and the driver exposes no cipher setting |
 | CONNECT_TIMEOUT | — | Yes | Exclusive — `MYSQL_OPT_CONNECT_TIMEOUT` (`u32`; negative rejected) |
 
 ## Queries
@@ -47,8 +47,8 @@ Coverage of the MySQL R41-4 (BlueG / maddinat0r) Pawn API by **mysql_samp**. Sou
 | `mysql_query` | Yes (sync) | Yes (non-blocking, FIFO) | Always threaded — replaces `tquery` |
 | `mysql_tquery` | Yes | — | Subsumed by `mysql_query` (which is already non-blocking) |
 | `mysql_pquery` | Yes | Yes | Parallel, no ordering guarantee |
-| `mysql_query_file` | Yes | — | Load SQL from a file |
-| `mysql_tquery_file` | Yes | — | Threaded variant of the above |
+| `mysql_query_file` | Yes | Yes | Non-blocking, like every query here. Not transactional — see the note in [Queries](docs/queries.md) |
+| `mysql_tquery_file` | Yes | — | Subsumed by `mysql_query_file`, which is already non-blocking |
 
 ## Cache
 
@@ -56,10 +56,10 @@ Coverage of the MySQL R41-4 (BlueG / maddinat0r) Pawn API by **mysql_samp**. Sou
 |---|---|---|---|
 | `cache_get_row_count` | Yes | Yes | |
 | `cache_get_field_count` | Yes | Yes | |
-| `cache_get_result_count` | Yes | — | Multi-result sets (not supported) |
+| `cache_get_result_count` | Yes | Yes | Number of result sets in the active cache |
 | `cache_get_field_name` | Yes | Yes | |
 | `cache_get_field_type` | Yes | Yes | Returns the raw `mysql::consts::ColumnType` byte |
-| `cache_set_result` | Yes | — | Multi-result sets (not supported) |
+| `cache_set_result` | Yes | Yes | Selects which set the other `cache_*` natives report on |
 | `cache_get_value_index` | Yes | Yes | String by index |
 | `cache_get_value_index_int` | Yes | Yes | Int by index |
 | `cache_get_value_index_float` | Yes | Yes | Float by index |
@@ -108,6 +108,7 @@ Coverage of the MySQL R41-4 (BlueG / maddinat0r) Pawn API by **mysql_samp**. Sou
 | `mysql_stmt_bind_int` / `_float` / `_str` / `_null` | Values travel over the binary protocol, never through SQL text |
 | `mysql_stmt_reset` | Drops bound values, keeps the statement for reuse |
 | `mysql_stmt_execute` | Non-blocking, FIFO; rejects a placeholder/value count mismatch |
+| `mysql_stmt_pexecute` | Parallel counterpart, mirroring `mysql_pquery` |
 | `mysql_stmt_close` | |
 
 ## Transactions (mysql_samp only)
@@ -153,15 +154,15 @@ Coverage of the MySQL R41-4 (BlueG / maddinat0r) Pawn API by **mysql_samp**. Sou
 | Unified `on_tick` | Dispatches callbacks via `ProcessTick` (SA-MP) and `ITimersComponent` (Open Multiplayer native), no Pawn `SetTimer` required |
 | `mysql_format` safe truncation | Truncates at the destination buffer boundary respecting UTF-8 char boundaries; warns once per call |
 | Strict integer conversions | Every cross-width / sign-changing conversion goes through `TryFrom` / `From`; no silent wrap from `as` |
-| 145 unit tests | Cover the entire pure surface (parser, renderer, escape modes, placeholder scanner, cache, ORM, statements, transactions, Argon2id) |
+| 167 unit tests | Cover the entire pure surface (parser, renderer, escape modes, placeholder scanner, cache, ORM, statements, transactions, Argon2id) |
 
 ## Totals
 
 | Category | R41-4 | mysql_samp |
 |---|---|---|
-| Pawn natives | — | **70** |
+| Pawn natives | — | **75** |
 | Pawn forwards | — | **1** |
 | Plugin error codes (`MYSQL_ERROR_*`) | — | 9 (`MYSQL_OK` + 8) |
-| Connection options (`MYSQL_OPT_*`) | many | 8 (all wired) |
+| Connection options (`MYSQL_OPT_*`) | many | 9 (all wired) |
 | Log levels (`MYSQL_LOG_*`) | bitflags | 5 sequential |
 | ORM error codes (`ORM_*`) | 3 | 2 |

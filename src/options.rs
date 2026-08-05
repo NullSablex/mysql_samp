@@ -14,6 +14,9 @@ pub struct MysqlOptions {
     pub ssl_verify_cert: bool,
     pub connect_timeout: Option<u32>,
     pub auto_reconnect: bool,
+    /// Maximum connections the pool may open. `None` keeps the driver default
+    /// (min 10, max 100).
+    pub pool_size: Option<u32>,
 }
 
 impl Default for MysqlOptions {
@@ -27,6 +30,7 @@ impl Default for MysqlOptions {
             ssl_verify_cert: true,
             connect_timeout: None,
             auto_reconnect: true,
+            pool_size: None,
         }
     }
 }
@@ -42,6 +46,7 @@ pub enum MysqlOptionKind {
     SslCert = 5,
     SslKey = 6,
     SslVerifyCert = 7,
+    PoolSize = 8,
 }
 
 impl MysqlOptionKind {
@@ -55,6 +60,7 @@ impl MysqlOptionKind {
             5 => Some(Self::SslCert),
             6 => Some(Self::SslKey),
             7 => Some(Self::SslVerifyCert),
+            8 => Some(Self::PoolSize),
             _ => None,
         }
     }
@@ -105,6 +111,15 @@ impl OptionsManager {
             }
             MysqlOptionKind::AutoReconnect => opts.auto_reconnect = value != 0,
             MysqlOptionKind::SslVerifyCert => opts.ssl_verify_cert = value != 0,
+            MysqlOptionKind::PoolSize => {
+                let Ok(size) = u32::try_from(value) else {
+                    return false;
+                };
+                if size == 0 {
+                    return false;
+                }
+                opts.pool_size = Some(size);
+            }
             _ => return false,
         }
 
@@ -151,7 +166,7 @@ mod tests {
     #[test]
     fn option_kind_from_invalid_values() {
         assert_eq!(MysqlOptionKind::from_i32(-1), None);
-        assert_eq!(MysqlOptionKind::from_i32(8), None);
+        assert_eq!(MysqlOptionKind::from_i32(9), None);
         assert_eq!(MysqlOptionKind::from_i32(100), None);
     }
 

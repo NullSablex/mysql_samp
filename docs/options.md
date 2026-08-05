@@ -39,6 +39,7 @@ The same handle can be reused across multiple `mysql_connect` calls.
 | `MYSQL_OPT_SSL_CERT` | string | empty | Client certificate chain for mutual TLS. Requires `MYSQL_OPT_SSL_KEY`. |
 | `MYSQL_OPT_SSL_KEY` | string | empty | Client private key for mutual TLS. Requires `MYSQL_OPT_SSL_CERT`. |
 | `MYSQL_OPT_SSL_VERIFY_CERT` | int (bool) | `1` (on) | Verifies the server certificate and hostname. Disabling it is dangerous. |
+| `MYSQL_OPT_POOL_SIZE` | int | driver default (100) | Maximum connections the pool may open. Must be ≥ 1. |
 | `MYSQL_OPT_CONNECT_TIMEOUT` | int (seconds) | none | TCP connect timeout. Must fit in `u32`. |
 | `MYSQL_OPT_AUTO_RECONNECT` | int (bool) | `1` (on) | Retry a query once when the server drops the connection (see [MYSQL_OPT_AUTO_RECONNECT](#mysql_opt_auto_reconnect)). |
 

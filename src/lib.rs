@@ -1,5 +1,6 @@
 mod cache;
 mod callback;
+mod config;
 mod connection;
 mod error;
 mod logger;
@@ -9,6 +10,7 @@ mod orm;
 mod password;
 mod plugin;
 mod query;
+mod sql;
 mod stmt;
 mod transaction;
 
@@ -19,6 +21,7 @@ initialize_plugin!(
     natives: [
         // Connection
         MysqlPlugin::mysql_connect,
+        MysqlPlugin::mysql_connect_file,
         MysqlPlugin::mysql_close,
         MysqlPlugin::mysql_status,
         // Options
@@ -43,6 +46,7 @@ initialize_plugin!(
         MysqlPlugin::mysql_tick,
         MysqlPlugin::mysql_escape_string,
         MysqlPlugin::mysql_format,
+        MysqlPlugin::mysql_query_file,
         // Prepared statements
         MysqlPlugin::mysql_stmt_new,
         MysqlPlugin::mysql_stmt_close,
@@ -52,6 +56,7 @@ initialize_plugin!(
         MysqlPlugin::mysql_stmt_bind_str,
         MysqlPlugin::mysql_stmt_bind_null,
         MysqlPlugin::mysql_stmt_execute,
+        MysqlPlugin::mysql_stmt_pexecute,
         // Transactions
         MysqlPlugin::mysql_transaction_new,
         MysqlPlugin::mysql_transaction_destroy,
@@ -74,6 +79,8 @@ initialize_plugin!(
         MysqlPlugin::cache_insert_id,
         MysqlPlugin::cache_get_query_exec_time,
         MysqlPlugin::cache_get_query_string,
+        MysqlPlugin::cache_get_result_count,
+        MysqlPlugin::cache_set_result,
         MysqlPlugin::cache_save,
         MysqlPlugin::cache_delete,
         MysqlPlugin::cache_set_active,

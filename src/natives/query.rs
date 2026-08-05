@@ -144,6 +144,89 @@ impl MysqlPlugin {
         true
     }
 
+    /// mysql_query_file(connId, const path[], const callback[] = "", const format[] = "", {Float,_}:...)
+    ///
+    /// Reads a `.sql` file and runs its statements in order on one connection,
+    /// non-blocking like every other query here. The callback receives the
+    /// cache of the last statement.
+    ///
+    /// The script is split on `;` outside string literals and comments, so a
+    /// semicolon inside `'...'` or `/* ... */` does not break a statement in
+    /// two. It is **not** run in a transaction: these files are usually schema
+    /// work, and DDL implicitly commits in MySQL, so a transaction would imply
+    /// an atomicity the server does not give. On failure the error names which
+    /// statement failed and execution stops there — earlier statements stay
+    /// applied.
+    ///
+    /// The path comes from your gamemode, so treat it like any other file it
+    /// opens: do not build it from player input.
+    #[native(name = "mysql_query_file", raw)]
+    pub fn mysql_query_file(&mut self, _amx: &Amx, mut args: Args) -> bool {
+        let Some(conn_id) = args.next_arg::<i32>() else {
+            return false;
+        };
+        let Some(path) = args.next_arg::<AmxString>() else {
+            return false;
+        };
+
+        let callback = args
+            .next_arg::<AmxString>()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        let format = args
+            .next_arg::<AmxString>()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+
+        let path = path.to_string();
+        let script = match std::fs::read_to_string(&path) {
+            Ok(script) => script,
+            Err(err) => {
+                let msg = format!("mysql_query_file: could not read '{path}': {err}");
+                Logger::warn(&msg);
+                self.connections.global_error = ErrorState::new(MysqlError::QueryFailed, msg);
+                return false;
+            }
+        };
+
+        let statements = crate::sql::split_statements(&script);
+        if statements.is_empty() {
+            let msg = format!("mysql_query_file: '{path}' contains no statements.");
+            Logger::warn(&msg);
+            self.connections.global_error = ErrorState::new(MysqlError::QueryFailed, msg);
+            return false;
+        }
+
+        let Some(pool) = self.connections.get_pool(conn_id) else {
+            Logger::warn("mysql_query_file failed: invalid connection ID.");
+            self.connections.global_error = ErrorState::new(
+                MysqlError::InvalidConnection,
+                "mysql_query_file failed: invalid connection ID.",
+            );
+            return false;
+        };
+
+        let callback_info = if callback.is_empty() {
+            None
+        } else {
+            let params = parse_variadic_params(&mut args, &format, 4);
+            Some(CallbackInfo {
+                name: callback,
+                format,
+                params,
+            })
+        };
+
+        Logger::info(&format!(
+            "Running {} statement(s) from '{}'.",
+            statements.len(),
+            path
+        ));
+        self.queries
+            .submit_script(pool, statements, callback_info, conn_id);
+        true
+    }
+
     /// mysql_tick()
     /// Kept only for backwards compatibility — since rust-samp v3.0.0 the
     /// unified `on_tick` already dispatches callbacks automatically on both

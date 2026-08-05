@@ -42,7 +42,7 @@ impl Statement {
     /// `'...'`, `"..."`, a backtick-quoted identifier, `-- ...`, `# ...` or
     /// `/* ... */` is not mistaken for a placeholder.
     pub fn placeholder_count(&self) -> usize {
-        count_placeholders(&self.query)
+        crate::sql::count_placeholders(&self.query)
     }
 }
 
@@ -109,64 +109,6 @@ impl StmtManager {
     }
 }
 
-/// Counts `?` placeholders, skipping quoted regions and comments.
-fn count_placeholders(query: &str) -> usize {
-    let bytes = query.as_bytes();
-    let mut count = 0usize;
-    let mut i = 0usize;
-
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\'' | b'"' | b'`' => {
-                let quote = bytes[i];
-                i += 1;
-                while i < bytes.len() {
-                    // Backslash escapes are skipped for '/" only; a backtick
-                    // identifier has no backslash escaping.
-                    if quote != b'`' && bytes[i] == b'\\' {
-                        i += 2;
-                        continue;
-                    }
-                    if bytes[i] == quote {
-                        // A doubled quote is a literal quote, not a terminator.
-                        if i + 1 < bytes.len() && bytes[i + 1] == quote {
-                            i += 2;
-                            continue;
-                        }
-                        break;
-                    }
-                    i += 1;
-                }
-                i += 1;
-            }
-            b'-' if bytes.get(i + 1) == Some(&b'-') => {
-                while i < bytes.len() && bytes[i] != b'\n' {
-                    i += 1;
-                }
-            }
-            b'#' => {
-                while i < bytes.len() && bytes[i] != b'\n' {
-                    i += 1;
-                }
-            }
-            b'/' if bytes.get(i + 1) == Some(&b'*') => {
-                i += 2;
-                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                    i += 1;
-                }
-                i += 2;
-            }
-            b'?' => {
-                count += 1;
-                i += 1;
-            }
-            _ => i += 1,
-        }
-    }
-
-    count
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,57 +119,6 @@ mod tests {
 
     fn dummy_ident_2() -> AmxIdent {
         AmxIdent::from(2usize as *mut samp::raw::types::AMX)
-    }
-
-    fn count(q: &str) -> usize {
-        count_placeholders(q)
-    }
-
-    #[test]
-    fn counts_plain_placeholders() {
-        assert_eq!(count("SELECT * FROM t WHERE a = ? AND b = ?"), 2);
-    }
-
-    #[test]
-    fn ignores_placeholder_inside_single_quotes() {
-        assert_eq!(count("SELECT '?' FROM t WHERE a = ?"), 1);
-    }
-
-    #[test]
-    fn ignores_placeholder_inside_double_quotes() {
-        assert_eq!(count(r#"SELECT "?" FROM t WHERE a = ?"#), 1);
-    }
-
-    #[test]
-    fn ignores_placeholder_inside_backticks() {
-        assert_eq!(count("SELECT `we?rd` FROM t WHERE a = ?"), 1);
-    }
-
-    #[test]
-    fn handles_escaped_quote_in_literal() {
-        assert_eq!(count(r"SELECT 'it\'s ?' FROM t WHERE a = ?"), 1);
-    }
-
-    #[test]
-    fn handles_doubled_quote_in_literal() {
-        assert_eq!(count("SELECT 'it''s ?' FROM t WHERE a = ?"), 1);
-    }
-
-    #[test]
-    fn ignores_placeholder_in_line_comment() {
-        assert_eq!(count("SELECT 1 -- ? comment\nWHERE a = ?"), 1);
-        assert_eq!(count("SELECT 1 # ? comment\nWHERE a = ?"), 1);
-    }
-
-    #[test]
-    fn ignores_placeholder_in_block_comment() {
-        assert_eq!(count("SELECT /* ? */ 1 WHERE a = ?"), 1);
-    }
-
-    #[test]
-    fn unterminated_literal_does_not_hang_or_panic() {
-        assert_eq!(count("SELECT 'unterminated ?"), 0);
-        assert_eq!(count("SELECT /* unterminated ?"), 0);
     }
 
     // StmtManager

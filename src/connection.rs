@@ -3,12 +3,18 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use mysql::prelude::Queryable;
-use mysql::{ClientIdentity, Opts, OptsBuilder, Pool, PooledConn, SslOpts};
+use mysql::{
+    ClientIdentity, Opts, OptsBuilder, Pool, PoolConstraints, PoolOpts, PooledConn, SslOpts,
+};
 
-use crate::cache::{CacheEntry, CacheRow};
+use crate::cache::{CacheEntry, CacheRow, ResultSet};
 use crate::error::{ErrorState, MysqlError};
 use crate::logger::Logger;
 use crate::options::MysqlOptions;
+
+/// Lower bound used when `MYSQL_OPT_POOL_SIZE` sets the ceiling. Matches the
+/// driver default, clamped so it never exceeds the requested maximum.
+const DEFAULT_POOL_MIN: usize = 10;
 
 struct ConnectionEntry {
     pool: Pool,
@@ -115,6 +121,29 @@ impl ConnectionManager {
             builder.ssl_opts(Some(ssl_opts))
         } else {
             builder
+        };
+
+        // Pool ceiling. The driver defaults to min 10 / max 100; a smaller max
+        // is the usual reason to touch this, so the minimum is clamped below it
+        // rather than left at 10 (which `PoolConstraints::new` would reject).
+        let builder = match options.pool_size {
+            Some(max) => {
+                let max = usize::try_from(max).unwrap_or(usize::MAX);
+                let min = DEFAULT_POOL_MIN.min(max);
+                match PoolConstraints::new(min, max) {
+                    Some(constraints) => {
+                        builder.pool_opts(PoolOpts::default().with_constraints(constraints))
+                    }
+                    None => {
+                        Logger::warn(&format!(
+                            "MYSQL_OPT_POOL_SIZE={max} is not a usable pool size; \
+                             keeping the driver default."
+                        ));
+                        builder
+                    }
+                }
+            }
+            None => builder,
         };
 
         // Force UTF-8 encoding on every connection for safe string escaping
@@ -403,6 +432,41 @@ pub fn attempt_transaction(
     Ok(last.unwrap_or_else(|| CacheEntry::empty(String::from("START TRANSACTION"))))
 }
 
+/// Runs a script's statements in order on one connection, stopping at the
+/// first failure.
+///
+/// Deliberately **not** wrapped in a transaction: these scripts are usually
+/// schema work, and DDL causes an implicit commit in MySQL — a transaction
+/// around it would suggest an atomicity that the server does not provide.
+///
+/// Returns the cache of the last statement.
+pub fn attempt_script(pool: &Pool, statements: &[String]) -> Result<CacheEntry, QueryError> {
+    let mut conn = pool.get_conn().map_err(|e| QueryError {
+        code: 0,
+        message: e.to_string(),
+    })?;
+
+    let mut last: Option<CacheEntry> = None;
+    for (index, statement) in statements.iter().enumerate() {
+        match execute_query(&mut conn, statement) {
+            Ok(cache) => last = Some(cache),
+            Err(mut e) => {
+                // Naming the position turns "syntax error" into something
+                // actionable in a file with dozens of statements.
+                e.message = format!(
+                    "statement {} of {}: {}",
+                    index + 1,
+                    statements.len(),
+                    e.message
+                );
+                return Err(e);
+            }
+        }
+    }
+
+    Ok(last.unwrap_or_else(|| CacheEntry::empty(String::new())))
+}
+
 /// Prepared-statement counterpart of [`attempt_query`], with the same
 /// single-retry auto-reconnect behaviour.
 pub fn attempt_prepared(
@@ -456,64 +520,75 @@ pub fn attempt_query(
 const MAX_RESULT_ROWS: usize = 100_000;
 
 /// Executes a query on a PooledConn and returns a CacheEntry with results.
-/// Rows and column metadata pulled off a result set, before the connection
-/// stats (affected rows, insert id, warnings) are read back from `conn`.
+/// Every result set a query produced, before the connection stats are read.
 struct RawResult {
-    rows: Vec<CacheRow>,
-    columns: Vec<String>,
-    field_types: Vec<u8>,
+    sets: Vec<ResultSet>,
     truncated: bool,
 }
 
-/// Drains a result set. Generic over the protocol so the text protocol
-/// (`query_iter`) and the binary/prepared protocol (`exec_iter`) share one
-/// implementation instead of two copies that can drift apart.
+/// Drains a query result, including **every** result set it carries.
+///
+/// A plain `SELECT` yields one. A script or a `CALL` to a stored procedure
+/// yields several, and stopping at the first would both lose data and leave
+/// the connection out of sync with the protocol.
+///
+/// Generic over the protocol so the text protocol (`query_iter`) and the
+/// binary/prepared protocol (`exec_iter`) share one implementation.
 fn collect_result<P: mysql::prelude::Protocol>(
-    result: mysql::QueryResult<'_, '_, '_, P>,
+    mut result: mysql::QueryResult<'_, '_, '_, P>,
 ) -> Result<RawResult, QueryError> {
-    let cols_ref = result.columns();
-    let columns: Vec<String> = cols_ref
-        .as_ref()
-        .iter()
-        .map(|c| c.name_str().to_string())
-        .collect();
-    let field_types: Vec<u8> = cols_ref
-        .as_ref()
-        .iter()
-        .map(|c| c.column_type() as u8)
-        .collect();
-
-    let mut rows: Vec<CacheRow> = Vec::new();
+    let mut sets = Vec::new();
+    let mut total_rows = 0usize;
     let mut truncated = false;
-    for row_result in result {
-        match row_result {
-            Ok(row) => {
-                if rows.len() >= MAX_RESULT_ROWS {
-                    truncated = true;
-                    continue; // drain remaining to avoid protocol desync
+
+    while let Some(mut set) = result.iter() {
+        let cols_ref = set.columns();
+        let field_names: Vec<String> = cols_ref
+            .as_ref()
+            .iter()
+            .map(|c| c.name_str().to_string())
+            .collect();
+        let field_types: Vec<u8> = cols_ref
+            .as_ref()
+            .iter()
+            .map(|c| c.column_type() as u8)
+            .collect();
+
+        let mut rows: Vec<CacheRow> = Vec::new();
+        for row_result in set.by_ref() {
+            match row_result {
+                Ok(row) => {
+                    // The ceiling spans the whole query, not each set, so a
+                    // script cannot bypass it by returning many small sets.
+                    if total_rows >= MAX_RESULT_ROWS {
+                        truncated = true;
+                        continue; // drain the rest to avoid protocol desync
+                    }
+                    let mut cells = Vec::with_capacity(field_names.len());
+                    for i in 0..field_names.len() {
+                        let val: Option<String> = row.get(i);
+                        cells.push(val);
+                    }
+                    rows.push(cells);
+                    total_rows += 1;
                 }
-                let mut cells = Vec::with_capacity(columns.len());
-                for i in 0..columns.len() {
-                    let val: Option<String> = row.get(i);
-                    cells.push(val);
+                Err(e) => {
+                    return Err(QueryError {
+                        code: extract_mysql_errno(&e),
+                        message: e.to_string(),
+                    });
                 }
-                rows.push(cells);
-            }
-            Err(e) => {
-                return Err(QueryError {
-                    code: extract_mysql_errno(&e),
-                    message: e.to_string(),
-                });
             }
         }
+
+        sets.push(ResultSet {
+            rows,
+            field_names,
+            field_types,
+        });
     }
 
-    Ok(RawResult {
-        rows,
-        columns,
-        field_types,
-        truncated,
-    })
+    Ok(RawResult { sets, truncated })
 }
 
 /// Turns a drained result set plus the connection's post-execution stats into
@@ -531,10 +606,8 @@ fn build_cache_entry(
         ));
     }
 
-    CacheEntry::new(
-        raw.rows,
-        raw.columns,
-        raw.field_types,
+    CacheEntry::with_results(
+        raw.sets,
         conn.affected_rows(),
         conn.last_insert_id(),
         conn.warnings(),

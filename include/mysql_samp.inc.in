@@ -27,6 +27,8 @@ enum {
     // keeps the traffic encrypted but accepts ANY certificate, which defeats the
     // point of TLS against an active attacker. Prefer MYSQL_OPT_SSL_CA.
     MYSQL_OPT_SSL_VERIFY_CERT,
+    // Maximum connections the pool may open. Default is the driver's (max 100).
+    MYSQL_OPT_POOL_SIZE,
 }
 
 // Error codes
@@ -67,6 +69,9 @@ native bool:mysql_options_set_str(handle, option, const value[]);
 
 // Connection
 native mysql_connect(const host[], const user[], const password[], const database[], options = 0);
+// Reads host / user / password / database from a `key = value` file, keeping
+// credentials out of the gamemode source. Options stay with mysql_options_new.
+native mysql_connect_file(const path[] = "mysql.ini", options = 0);
 native bool:mysql_close(connId);
 native bool:mysql_status(connId, dest[], max_len = sizeof(dest));
 
@@ -93,6 +98,10 @@ native bool:mysql_tick();
 // 0 assumes the MySQL default.
 native bool:mysql_escape_string(const src[], dest[], max_len = sizeof(dest), connId = 0);
 native mysql_format(connId, dest[], max_len, const format[], {Float,_}:...);
+// Runs the statements of a .sql file in order on one connection, non-blocking.
+// Split on `;` outside literals and comments. NOT transactional: DDL commits
+// implicitly in MySQL. Stops at the first failure, naming which statement.
+native bool:mysql_query_file(connId, const path[], const callback[] = "", const format[] = "", {Float,_}:...);
 
 // Prepared statements (non-blocking, FIFO like mysql_query)
 //
@@ -117,6 +126,8 @@ native bool:mysql_stmt_bind_float(stmtId, Float:value);
 native bool:mysql_stmt_bind_str(stmtId, const value[]);
 native bool:mysql_stmt_bind_null(stmtId);
 native bool:mysql_stmt_execute(stmtId, const callback[] = "", const format[] = "", {Float,_}:...);
+// Parallel counterpart, mirroring mysql_pquery: no ordering guarantee.
+native bool:mysql_stmt_pexecute(stmtId, const callback[] = "", const format[] = "", {Float,_}:...);
 
 // Cache
 native cache_get_row_count();
@@ -136,6 +147,12 @@ native cache_insert_id();
 native cache_warning_count();
 native cache_get_query_exec_time();
 native bool:cache_get_query_string(dest[], max_len = sizeof(dest));
+// Result sets in the active cache. A plain query yields 1; a script or a
+// stored-procedure CALL can yield several. cache_set_result picks which one
+// every other cache_* native reports on (index 0 until changed).
+native cache_get_result_count();
+native bool:cache_set_result(result_index);
+
 native cache_save();
 native bool:cache_delete(cache_id);
 native bool:cache_set_active(cache_id);

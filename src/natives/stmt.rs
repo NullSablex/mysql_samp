@@ -69,7 +69,21 @@ impl MysqlPlugin {
     /// Non-blocking, FIFO-ordered like `mysql_query`. The result reaches the
     /// callback through the usual cache stack.
     #[native(name = "mysql_stmt_execute", raw)]
-    pub fn mysql_stmt_execute(&mut self, _amx: &Amx, mut args: Args) -> bool {
+    pub fn mysql_stmt_execute(&mut self, _amx: &Amx, args: Args) -> bool {
+        self.submit_stmt(args, true)
+    }
+
+    /// mysql_stmt_pexecute(stmtId, const callback[] = "", const format[] = "", {Float,_}:...)
+    ///
+    /// Parallel counterpart of `mysql_stmt_execute`, mirroring `mysql_pquery`:
+    /// no ordering guarantee, dispatched as soon as it completes.
+    #[native(name = "mysql_stmt_pexecute", raw)]
+    pub fn mysql_stmt_pexecute(&mut self, _amx: &Amx, args: Args) -> bool {
+        self.submit_stmt(args, false)
+    }
+
+    /// Shared body of the two execute natives. `ordered` picks FIFO or parallel.
+    fn submit_stmt(&mut self, mut args: Args, ordered: bool) -> bool {
         let Some(stmt_id) = args.next_arg::<i32>() else {
             return false;
         };
@@ -125,14 +139,26 @@ impl MysqlPlugin {
             })
         };
 
-        self.queries.submit_prepared(
-            pool,
-            query,
-            params,
-            callback_info,
-            conn_id,
-            self.connections.get_auto_reconnect(conn_id),
-        );
+        let auto_reconnect = self.connections.get_auto_reconnect(conn_id);
+        if ordered {
+            self.queries.submit_prepared(
+                pool,
+                query,
+                params,
+                callback_info,
+                conn_id,
+                auto_reconnect,
+            );
+        } else {
+            self.queries.submit_pprepared(
+                pool,
+                query,
+                params,
+                callback_info,
+                conn_id,
+                auto_reconnect,
+            );
+        }
         true
     }
 }
