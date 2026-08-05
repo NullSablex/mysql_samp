@@ -103,6 +103,15 @@ Both natives are non-blocking, and both return `false` if the work queue is satu
 - `MYSQL_OPT_SSL_VERIFY_CERT = 0` disables certificate and hostname verification. Traffic stays encrypted, but any machine-in-the-middle can present its own certificate and read or rewrite every query. It warns on every connect. Use `MYSQL_OPT_SSL_CA` instead.
 - `MYSQL_OPT_SSL_CERT` + `MYSQL_OPT_SSL_KEY` provide a client certificate when the server requires mutual TLS.
 
+#### The connection is verified, not assumed
+
+Asking for TLS and not getting it is the failure that matters, and it can happen quietly: against MariaDB 11.8 the driver completes the handshake in clear text without raising an error. So after connecting with `MYSQL_OPT_SSL` the plugin asks the server for `Ssl_cipher` and **refuses the connection** when the session is not encrypted, instead of sending credentials and queries in the clear. The negotiated cipher is logged when TLS does come up.
+
+Practical notes:
+
+- **TLS is not available over a unix socket.** A host starting with `/` connects over a socket, where there is nothing to encrypt. Use a TCP host if you need TLS.
+- A connection that appeared to work on an older build may now be refused. That is the problem becoming visible, not a new one.
+
 > Plugin versions before 1.2.0 accepted `MYSQL_OPT_SSL` but shipped no TLS backend at all, so connections were never encrypted. If you relied on it, treat those credentials as exposed.
 
 ## Resource limits

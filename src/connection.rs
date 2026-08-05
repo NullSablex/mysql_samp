@@ -170,7 +170,29 @@ impl ConnectionManager {
 
         // Validate by getting a connection (Pool connects lazily on first get_conn)
         let escape_mode = match pool.get_conn() {
-            Ok(mut conn) => detect_escape_mode(&mut conn),
+            Ok(mut conn) => {
+                // Asking for TLS and not getting it must never be silent. The
+                // driver can negotiate plaintext without raising an error —
+                // observed against MariaDB 11.8 — and a connection the operator
+                // believes is encrypted, but is not, is the worst outcome here.
+                // So verify with the server rather than trust the handshake.
+                if options.ssl && !connection_is_encrypted(&mut conn) {
+                    let detail = String::from(
+                        "MYSQL_OPT_SSL was requested but the server reports an empty Ssl_cipher: \
+                         the connection is NOT encrypted. Refusing it rather than sending \
+                         credentials and queries in clear text. Check that the server has TLS \
+                         enabled and reachable over TCP (TLS is not available over a unix socket).",
+                    );
+                    Logger::error_detail(
+                        "Connection refused: TLS was requested but the connection is not \
+                         encrypted. See logs/mysql.log for details.",
+                        &detail,
+                    );
+                    self.global_error = ErrorState::new(MysqlError::ConnectionFailed, detail);
+                    return 0;
+                }
+                detect_escape_mode(&mut conn)
+            }
             Err(e) => {
                 let detail = format!("Connection failed: {}", e);
                 let code = MysqlError::ConnectionFailed.code();
@@ -295,6 +317,29 @@ impl ConnectionManager {
         let mut conn = entry.pool.get_conn().ok()?;
         let result: Option<String> = conn.query_first("SELECT @@character_set_connection").ok()?;
         result
+    }
+}
+
+/// Asks the server whether this session is actually encrypted.
+///
+/// `Ssl_cipher` is empty on a plaintext session and holds the negotiated
+/// cipher suite otherwise. This is the only trustworthy answer: the driver
+/// reports success even when it silently fell back to plaintext.
+///
+/// A failure to read the status is treated as "not encrypted" — refusing a
+/// connection we cannot verify is the safe direction.
+fn connection_is_encrypted(conn: &mut PooledConn) -> bool {
+    let row: Option<(String, String)> = conn
+        .query_first("SHOW SESSION STATUS LIKE 'Ssl_cipher'")
+        .ok()
+        .flatten();
+
+    match row {
+        Some((_, cipher)) if !cipher.is_empty() => {
+            Logger::info(&format!("TLS active, cipher {cipher}."));
+            true
+        }
+        _ => false,
     }
 }
 
@@ -520,6 +565,34 @@ pub fn attempt_query(
 const MAX_RESULT_ROWS: usize = 100_000;
 
 /// Executes a query on a PooledConn and returns a CacheEntry with results.
+/// Renders a protocol value as the string the cache stores.
+///
+/// `Row::get::<Option<String>>` cannot be used here: it goes through
+/// `from_value`, which **panics** when the conversion fails. Over the text
+/// protocol every value arrives as `Bytes`, so that panic never fired — but a
+/// prepared statement uses the binary protocol, where an `INT` column arrives
+/// as `Value::Int` and `String` does not accept it. That killed the worker
+/// thread silently: no rows, no callback, no error.
+///
+/// Numbers are rendered the way the text protocol would, so a column reads the
+/// same whether it came back through `mysql_query` or `mysql_stmt_execute`.
+fn value_to_string(value: &mysql::Value) -> Option<String> {
+    use mysql::Value;
+
+    match value {
+        Value::NULL => None,
+        Value::Bytes(bytes) => Some(String::from_utf8_lossy(bytes).into_owned()),
+        Value::Int(v) => Some(v.to_string()),
+        Value::UInt(v) => Some(v.to_string()),
+        Value::Float(v) => Some(v.to_string()),
+        Value::Double(v) => Some(v.to_string()),
+        // MySQL renders these as `YYYY-MM-DD hh:mm:ss[.ffffff]` and
+        // `[-]hh:mm:ss[.ffffff]`; `as_sql` produces exactly that, wrapped in
+        // quotes we do not want in a cell value.
+        other => Some(other.as_sql(true).trim_matches('\'').to_string()),
+    }
+}
+
 /// Every result set a query produced, before the connection stats are read.
 struct RawResult {
     sets: Vec<ResultSet>,
@@ -566,8 +639,7 @@ fn collect_result<P: mysql::prelude::Protocol>(
                     }
                     let mut cells = Vec::with_capacity(field_names.len());
                     for i in 0..field_names.len() {
-                        let val: Option<String> = row.get(i);
-                        cells.push(val);
+                        cells.push(row.as_ref(i).and_then(value_to_string));
                     }
                     rows.push(cells);
                     total_rows += 1;
@@ -830,6 +902,89 @@ mod tests {
             escape_string(r"\' OR 1=1 -- ", EscapeMode::Backslash),
             r"\\\' OR 1=1 -- "
         );
+    }
+
+    /// Live check against a real server. Ignored by default; run with:
+    ///   MYSQL_SAMP_TEST_USER=... MYSQL_SAMP_TEST_PASS=... \
+    ///   cargo test --target i686-unknown-linux-gnu -- --ignored tls
+    #[test]
+    #[ignore = "requires a reachable MySQL/MariaDB server"]
+    fn tls_actually_encrypts_the_connection() {
+        let Ok(user) = std::env::var("MYSQL_SAMP_TEST_USER") else {
+            panic!("set MYSQL_SAMP_TEST_USER / _PASS to run this");
+        };
+        let pass = std::env::var("MYSQL_SAMP_TEST_PASS").unwrap_or_default();
+
+        let ssl_opts = SslOpts::default()
+            .with_danger_accept_invalid_certs(true)
+            .with_danger_skip_domain_validation(true);
+
+        let opts: Opts = OptsBuilder::new()
+            .ip_or_hostname(Some("127.0.0.1"))
+            .tcp_port(3306)
+            .user(Some(user))
+            .pass(Some(pass))
+            .ssl_opts(Some(ssl_opts))
+            .into();
+
+        assert!(
+            opts.get_ssl_opts().is_some(),
+            "OptsBuilder dropped the ssl_opts before Pool::new"
+        );
+
+        // Conn directly, bypassing the pool, to tell a pool-specific problem
+        // from a driver-wide one.
+        let mut conn = mysql::Conn::new(opts).expect("conn");
+
+        let cipher: Option<(String, String)> = conn
+            .query_first("SHOW SESSION STATUS LIKE 'Ssl_cipher'")
+            .expect("status query");
+
+        let cipher = cipher.expect("Ssl_cipher row").1;
+        assert!(
+            !cipher.is_empty(),
+            "connection is NOT encrypted (Ssl_cipher empty)"
+        );
+        println!("negotiated cipher: {cipher}");
+    }
+
+    // value_to_string — the binary protocol conversion
+
+    #[test]
+    fn value_to_string_renders_numbers_like_the_text_protocol() {
+        use mysql::Value;
+        // The bug this guards: a prepared statement returns INT columns as
+        // Value::Int, and `from_value::<String>` panics on them, killing the
+        // worker thread with no callback and no error.
+        assert_eq!(value_to_string(&Value::Int(-42)), Some("-42".to_string()));
+        assert_eq!(value_to_string(&Value::UInt(42)), Some("42".to_string()));
+        assert_eq!(
+            value_to_string(&Value::Double(1.5)),
+            Some("1.5".to_string())
+        );
+    }
+
+    #[test]
+    fn value_to_string_decodes_bytes_as_utf8() {
+        use mysql::Value;
+        assert_eq!(
+            value_to_string(&Value::Bytes("José".as_bytes().to_vec())),
+            Some("José".to_string())
+        );
+    }
+
+    #[test]
+    fn value_to_string_maps_null_to_none() {
+        assert_eq!(value_to_string(&mysql::Value::NULL), None);
+    }
+
+    #[test]
+    fn value_to_string_strips_the_quotes_from_dates() {
+        use mysql::Value;
+        let rendered =
+            value_to_string(&Value::Date(2026, 8, 5, 14, 30, 15, 0)).expect("a date renders");
+        assert!(!rendered.starts_with('\''), "got {rendered}");
+        assert!(rendered.contains("2026-08-05"), "got {rendered}");
     }
 
     // escape_identifier tests
