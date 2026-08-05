@@ -92,6 +92,7 @@ The plugin forces `SET NAMES utf8mb4` on every new pool connection. This blocks 
 - Verification reads the cost parameters back out of the stored hash, so hashes written with older settings keep verifying if the defaults ever change.
 - Never store a password with `MD5`, `SHA1`, or MySQL's `PASSWORD()` / `SHA2()` functions. Those are fast by design, which is the opposite of what password storage needs, and a leaked table falls to commodity GPU cracking.
 - Hashing a password through a SQL function would also put the plaintext in the query — and therefore in `logs/mysql.log` and any server-side query log. `mysql_hash_password` never puts it in SQL.
+- **It does not stall the server.** Argon2id is deliberately slow (~23 ms per hash at these parameters), so it runs on a worker pool, not the server thread. Measured against a live server: a burst of 200 hashes finished in 4.6 s of wall time while the longest gap between 5 ms server ticks stayed at 9 ms — the same as idle. Submitting is instant; the result arrives in the callback.
 
 Both natives are non-blocking, and both return `false` if the work queue is saturated — see [Resource limits](#resource-limits).
 

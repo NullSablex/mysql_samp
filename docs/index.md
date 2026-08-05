@@ -72,14 +72,14 @@ public OnGameModeExit()
 | Topic | Contents |
 |---|---|
 | [Installation](installation.md) | Download, register on SA-MP and Open Multiplayer, log files |
-| [Connection](connection.md) | `mysql_connect`, `mysql_close`, `mysql_status`, charset |
+| [Connection](connection.md) | `mysql_connect`, `mysql_connect_file`, `mysql_close`, `mysql_status`, charset, pool size |
 | [Options](options.md) | All `MYSQL_OPT_*` values, defaults, TLS and mutual TLS |
 | [Queries](queries.md) | `mysql_query`, `mysql_pquery`, `mysql_format`, `mysql_escape_string`, `mysql_stmt_*`, `mysql_transaction_*` |
-| [Cache](cache.md) | `cache_*` natives, active stack, persistent caches |
+| [Cache](cache.md) | `cache_*` natives, active stack, persistent caches, multiple result sets |
 | [ORM](orm.md) | Bind Pawn variables to columns, CRUD without writing SQL |
 | [Errors](errors.md) | `mysql_errno`, `mysql_error`, `OnQueryError`, MySQL error codes |
 | [Security](security.md) | Prepared statements vs escaping, password storage, TLS, resource limits |
-| [API reference](api-reference.md) | One-line table of every native and forward (70 total) |
+| [API reference](api-reference.md) | One-line table of every native and forward (75 total) |
 
 ## Plugin facts
 
