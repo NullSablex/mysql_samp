@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use samp::amx::{AmxIdent, get as get_amx};
 use samp::prelude::*;
 
-use crate::connection::{escape_identifier, escape_string};
+use crate::connection::{EscapeMode, escape_identifier, escape_string};
 
 /// Upper bound on the buffer size accepted by `orm_addvar_string`.
 /// Protects the AMX heap from oversized writes via a hostile `max_len`.
@@ -92,7 +92,7 @@ impl OrmInstance {
                     Ok(len) => {
                         let max_len_usize = usize::try_from(max_len).unwrap_or(0);
                         let actual_len = len.min(max_len_usize);
-                        let mut chars = Vec::with_capacity(actual_len);
+                        let mut bytes = Vec::with_capacity(actual_len);
                         for i in 0..actual_len {
                             let cell = unsafe { *ptr.add(i) };
                             if cell == 0 {
@@ -101,10 +101,15 @@ impl OrmInstance {
                             // AMX cells holding char data fit in 0..=255 by
                             // construction; anything outside that range is
                             // truncated to the low byte (matches AMX behavior).
-                            let byte = u8::try_from(cell & 0xFF).unwrap_or(0);
-                            chars.push(char::from(byte));
+                            bytes.push(u8::try_from(cell & 0xFF).unwrap_or(0));
                         }
-                        chars.into_iter().collect()
+
+                        // Decode as UTF-8, which is what the connection uses
+                        // (`SET NAMES utf8mb4`). Mapping each byte to a `char`
+                        // instead would treat the input as Latin-1 and
+                        // re-encode it, turning the two bytes of "é" into four
+                        // ("Ã©") — silent corruption of every non-ASCII value.
+                        String::from_utf8_lossy(&bytes).into_owned()
                     }
                     Err(_) => String::new(),
                 }
@@ -114,7 +119,7 @@ impl OrmInstance {
     }
 
     /// Reads a variable value as an SQL-safe string.
-    fn read_var_as_sql(&self, amx: &Amx, var: &OrmVarBinding) -> String {
+    fn read_var_as_sql(&self, amx: &Amx, var: &OrmVarBinding, mode: EscapeMode) -> String {
         match var {
             OrmVarBinding::Int { amx_addr, .. } => {
                 format!("{}", self.read_int(amx, *amx_addr))
@@ -126,20 +131,20 @@ impl OrmInstance {
                 amx_addr, max_len, ..
             } => {
                 let raw = self.read_string(amx, *amx_addr, *max_len);
-                format!("'{}'", escape_string(&raw))
+                format!("'{}'", escape_string(&raw, mode))
             }
         }
     }
 
     /// Reads the key column's current value from AMX memory.
-    fn read_key_value(&self, amx: &Amx) -> Option<String> {
+    fn read_key_value(&self, amx: &Amx, mode: EscapeMode) -> Option<String> {
         let key_col = self.key_column.as_ref()?;
         let var = self.variables.iter().find(|v| v.column_name() == key_col)?;
-        Some(self.read_var_as_sql(amx, var))
+        Some(self.read_var_as_sql(amx, var, mode))
     }
 
     /// Builds a SELECT query for this ORM instance.
-    pub fn build_select(&self) -> Option<String> {
+    pub fn build_select(&self, mode: EscapeMode) -> Option<String> {
         let key = self.key_column.as_ref()?;
         let amx = get_amx(self.amx_ident)?;
 
@@ -153,7 +158,7 @@ impl OrmInstance {
             return None;
         }
 
-        let key_value = self.read_key_value(amx)?;
+        let key_value = self.read_key_value(amx, mode)?;
 
         Some(format!(
             "SELECT {} FROM `{}` WHERE `{}` = {}",
@@ -165,7 +170,7 @@ impl OrmInstance {
     }
 
     /// Builds an INSERT query for this ORM instance.
-    pub fn build_insert(&self) -> Option<String> {
+    pub fn build_insert(&self, mode: EscapeMode) -> Option<String> {
         let amx = get_amx(self.amx_ident)?;
 
         if self.variables.is_empty() {
@@ -177,7 +182,7 @@ impl OrmInstance {
 
         for var in &self.variables {
             cols.push(format!("`{}`", escape_identifier(var.column_name())));
-            vals.push(self.read_var_as_sql(amx, var));
+            vals.push(self.read_var_as_sql(amx, var, mode));
         }
 
         Some(format!(
@@ -189,7 +194,7 @@ impl OrmInstance {
     }
 
     /// Builds an UPDATE query for this ORM instance.
-    pub fn build_update(&self) -> Option<String> {
+    pub fn build_update(&self, mode: EscapeMode) -> Option<String> {
         let key = self.key_column.as_ref()?;
         let amx = get_amx(self.amx_ident)?;
 
@@ -202,11 +207,11 @@ impl OrmInstance {
             sets.push(format!(
                 "`{}` = {}",
                 escape_identifier(var.column_name()),
-                self.read_var_as_sql(amx, var)
+                self.read_var_as_sql(amx, var, mode)
             ));
         }
 
-        let key_value = self.read_key_value(amx)?;
+        let key_value = self.read_key_value(amx, mode)?;
 
         Some(format!(
             "UPDATE `{}` SET {} WHERE `{}` = {}",
@@ -218,10 +223,10 @@ impl OrmInstance {
     }
 
     /// Builds a DELETE query for this ORM instance.
-    pub fn build_delete(&self) -> Option<String> {
+    pub fn build_delete(&self, mode: EscapeMode) -> Option<String> {
         let key = self.key_column.as_ref()?;
         let amx = get_amx(self.amx_ident)?;
-        let key_value = self.read_key_value(amx)?;
+        let key_value = self.read_key_value(amx, mode)?;
 
         Some(format!(
             "DELETE FROM `{}` WHERE `{}` = {}",

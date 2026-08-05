@@ -7,7 +7,7 @@ use std::thread;
 use mysql::Pool;
 
 use crate::cache::CacheEntry;
-use crate::connection::{QueryError, attempt_query};
+use crate::connection::{QueryError, attempt_prepared, attempt_query, attempt_transaction};
 
 /// Parameter type for callback invocation.
 #[derive(Debug, Clone)]
@@ -97,6 +97,86 @@ impl QueryManager {
                 },
                 Err(e) => QueryResult {
                     cache: CacheEntry::empty(query),
+                    callback,
+                    conn_id,
+                    error: Some(e),
+                    ordered: true,
+                    sequence,
+                },
+            };
+            let _ = sender.send(result);
+            in_flight.fetch_sub(1, Ordering::Relaxed);
+        });
+    }
+
+    /// Submits a prepared statement. Ordered like [`Self::submit_query`] — the
+    /// values are bound server-side rather than pasted into the SQL text.
+    pub fn submit_prepared(
+        &mut self,
+        pool: Pool,
+        query: String,
+        params: Vec<mysql::Value>,
+        callback: Option<CallbackInfo>,
+        conn_id: i32,
+        auto_reconnect: bool,
+    ) {
+        let sequence = self.next_sequence;
+        self.next_sequence += 1;
+        let sender = self.sender.clone();
+        self.in_flight.fetch_add(1, Ordering::Relaxed);
+        let in_flight = self.in_flight.clone();
+
+        thread::spawn(move || {
+            let result = match attempt_prepared(&pool, &query, params, auto_reconnect) {
+                Ok(cache) => QueryResult {
+                    cache,
+                    callback,
+                    conn_id,
+                    error: None,
+                    ordered: true,
+                    sequence,
+                },
+                Err(e) => QueryResult {
+                    cache: CacheEntry::empty(query),
+                    callback,
+                    conn_id,
+                    error: Some(e),
+                    ordered: true,
+                    sequence,
+                },
+            };
+            let _ = sender.send(result);
+            in_flight.fetch_sub(1, Ordering::Relaxed);
+        });
+    }
+
+    /// Submits a transaction batch. Ordered, and never auto-reconnects — see
+    /// [`attempt_transaction`].
+    pub fn submit_transaction(
+        &mut self,
+        pool: Pool,
+        steps: Vec<crate::transaction::TxStep>,
+        callback: Option<CallbackInfo>,
+        conn_id: i32,
+    ) {
+        let sequence = self.next_sequence;
+        self.next_sequence += 1;
+        let sender = self.sender.clone();
+        self.in_flight.fetch_add(1, Ordering::Relaxed);
+        let in_flight = self.in_flight.clone();
+
+        thread::spawn(move || {
+            let result = match attempt_transaction(&pool, &steps) {
+                Ok(cache) => QueryResult {
+                    cache,
+                    callback,
+                    conn_id,
+                    error: None,
+                    ordered: true,
+                    sequence,
+                },
+                Err(e) => QueryResult {
+                    cache: CacheEntry::empty(String::from("TRANSACTION")),
                     callback,
                     conn_id,
                     error: Some(e),

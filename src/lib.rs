@@ -6,8 +6,11 @@ mod logger;
 mod natives;
 mod options;
 mod orm;
+mod password;
 mod plugin;
 mod query;
+mod stmt;
+mod transaction;
 
 use plugin::MysqlPlugin;
 use samp::initialize_plugin;
@@ -31,12 +34,30 @@ initialize_plugin!(
         // Utility
         MysqlPlugin::mysql_unprocessed_queries,
         MysqlPlugin::mysql_log,
+        // Password hashing
+        MysqlPlugin::mysql_hash_password,
+        MysqlPlugin::mysql_verify_password,
         // Query
         MysqlPlugin::mysql_query,
         MysqlPlugin::mysql_pquery,
         MysqlPlugin::mysql_tick,
         MysqlPlugin::mysql_escape_string,
         MysqlPlugin::mysql_format,
+        // Prepared statements
+        MysqlPlugin::mysql_stmt_new,
+        MysqlPlugin::mysql_stmt_close,
+        MysqlPlugin::mysql_stmt_reset,
+        MysqlPlugin::mysql_stmt_bind_int,
+        MysqlPlugin::mysql_stmt_bind_float,
+        MysqlPlugin::mysql_stmt_bind_str,
+        MysqlPlugin::mysql_stmt_bind_null,
+        MysqlPlugin::mysql_stmt_execute,
+        // Transactions
+        MysqlPlugin::mysql_transaction_new,
+        MysqlPlugin::mysql_transaction_destroy,
+        MysqlPlugin::mysql_transaction_add,
+        MysqlPlugin::mysql_transaction_add_stmt,
+        MysqlPlugin::mysql_transaction_execute,
         // Cache
         MysqlPlugin::cache_get_row_count,
         MysqlPlugin::cache_get_field_count,

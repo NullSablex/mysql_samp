@@ -49,8 +49,46 @@ ensure_xwin() {
   fi
 }
 
+# `ring` (the TLS backend behind MYSQL_OPT_SSL) compiles C, so the MSVC target
+# needs `llvm-lib` to archive the objects. cargo-xwin provides clang-cl and
+# lld-link but not this one, and LLVM ships it un-suffixed only inside its own
+# libdir — so expose it on PATH when it is missing.
+ensure_llvm_lib() {
+  command -v llvm-lib >/dev/null 2>&1 && return 0
+
+  local found
+  found="$(ls -d /usr/lib/llvm-*/bin/llvm-lib 2>/dev/null | sort -V | tail -1)"
+  if [[ -z "$found" ]]; then
+    log_err "llvm-lib not found. Install LLVM (e.g. 'apt install llvm') to build the Windows target."
+    exit 1
+  fi
+
+  local shim="$HOME/.cache/cargo-xwin"
+  mkdir -p "$shim"
+  ln -sf "$found" "$shim/llvm-lib"
+  export PATH="$shim:$PATH"
+  log_info "llvm-lib: $found"
+}
+
+# The TLS backend (`ring`) compiles C and 32-bit assembly, so the i686 target
+# now needs 32-bit libc headers. Before TLS was enabled this build was pure
+# Rust and worked without them, and cc-rs fails with an opaque missing-header
+# error rather than naming the real cause.
+ensure_multilib() {
+  if echo 'int main(){return 0;}' | gcc -m32 -x c - -o /dev/null >/dev/null 2>&1; then
+    return 0
+  fi
+  log_err "32-bit C support is missing: 'gcc -m32' cannot build."
+  log_err "The TLS backend compiles C for i686. Install it with:"
+  log_err "  Debian/Ubuntu:  sudo apt install gcc-multilib g++-multilib"
+  log_err "  Fedora:         sudo dnf install glibc-devel.i686 libstdc++-devel.i686"
+  log_err "  Arch:           sudo pacman -S lib32-glibc lib32-gcc-libs"
+  exit 1
+}
+
 build_linux() {
   local target="i686-unknown-linux-gnu"
+  ensure_multilib
   ensure_target "$target"
   log_step "Building: $target"
   cargo build --profile "$PROFILE" --target "$target"
@@ -66,6 +104,7 @@ build_windows() {
   local target="i686-pc-windows-msvc"
   ensure_target "$target"
   ensure_xwin
+  ensure_llvm_lib
   log_step "Building: $target"
   cargo xwin build --xwin-arch x86 --profile "$PROFILE" --target "$target"
 

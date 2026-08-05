@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use mysql::prelude::Queryable;
-use mysql::{Opts, OptsBuilder, Pool, PooledConn, SslOpts};
+use mysql::{ClientIdentity, Opts, OptsBuilder, Pool, PooledConn, SslOpts};
 
 use crate::cache::{CacheEntry, CacheRow};
 use crate::error::{ErrorState, MysqlError};
@@ -14,6 +14,7 @@ struct ConnectionEntry {
     pool: Pool,
     last_error: ErrorState,
     auto_reconnect: bool,
+    escape_mode: EscapeMode,
 }
 
 pub struct QueryError {
@@ -67,9 +68,50 @@ impl ConnectionManager {
 
         let builder = if options.ssl {
             let mut ssl_opts = SslOpts::default();
+
+            // Without a CA the driver trusts the compiled-in webpki roots
+            // (the Mozilla bundle), NOT the OS trust store. A server using an
+            // internal CA or a self-signed certificate — the common case for a
+            // game server — therefore needs MYSQL_OPT_SSL_CA.
             if let Some(ca) = options.ssl_ca.as_deref() {
                 ssl_opts = ssl_opts.with_root_cert_path(Some(PathBuf::from(ca)));
             }
+
+            // Mutual TLS: both halves are required, a lone one is a
+            // configuration mistake worth reporting rather than ignoring.
+            match (options.ssl_cert.as_deref(), options.ssl_key.as_deref()) {
+                (Some(cert), Some(key)) => {
+                    ssl_opts = ssl_opts.with_client_identity(Some(ClientIdentity::new(
+                        PathBuf::from(cert),
+                        PathBuf::from(key),
+                    )));
+                }
+                (Some(_), None) => {
+                    Logger::warn(
+                        "MYSQL_OPT_SSL_CERT was set without MYSQL_OPT_SSL_KEY; \
+                         client certificate ignored.",
+                    );
+                }
+                (None, Some(_)) => {
+                    Logger::warn(
+                        "MYSQL_OPT_SSL_KEY was set without MYSQL_OPT_SSL_CERT; \
+                         client certificate ignored.",
+                    );
+                }
+                (None, None) => {}
+            }
+
+            if !options.ssl_verify_cert {
+                Logger::warn(
+                    "MYSQL_OPT_SSL_VERIFY_CERT is disabled: the server certificate and \
+                     hostname are NOT verified. The connection is encrypted but open to \
+                     man-in-the-middle. Use MYSQL_OPT_SSL_CA instead whenever possible.",
+                );
+                ssl_opts = ssl_opts
+                    .with_danger_accept_invalid_certs(true)
+                    .with_danger_skip_domain_validation(true);
+            }
+
             builder.ssl_opts(Some(ssl_opts))
         } else {
             builder
@@ -98,8 +140,8 @@ impl ConnectionManager {
         };
 
         // Validate by getting a connection (Pool connects lazily on first get_conn)
-        match pool.get_conn() {
-            Ok(_) => {}
+        let escape_mode = match pool.get_conn() {
+            Ok(mut conn) => detect_escape_mode(&mut conn),
             Err(e) => {
                 let detail = format!("Connection failed: {}", e);
                 let code = MysqlError::ConnectionFailed.code();
@@ -113,7 +155,7 @@ impl ConnectionManager {
                 self.global_error = ErrorState::new(MysqlError::ConnectionFailed, detail);
                 return 0;
             }
-        }
+        };
 
         self.global_error = ErrorState::ok();
 
@@ -125,6 +167,7 @@ impl ConnectionManager {
                 pool,
                 last_error: ErrorState::ok(),
                 auto_reconnect: options.auto_reconnect,
+                escape_mode,
             },
         );
 
@@ -202,11 +245,19 @@ impl ConnectionManager {
 
         match entry.pool.get_conn() {
             Ok(mut conn) => {
-                let query = format!("SET NAMES '{}'", escape_string(charset));
+                let query = format!("SET NAMES '{}'", escape_string(charset, entry.escape_mode));
                 conn.query_drop(&query).is_ok()
             }
             Err(_) => false,
         }
+    }
+
+    /// Escaping mode of a connection. Unknown IDs fall back to the MySQL
+    /// default, which is what a server uses unless configured otherwise.
+    pub fn escape_mode(&self, conn_id: i32) -> EscapeMode {
+        self.connections
+            .get(&conn_id)
+            .map_or(EscapeMode::Backslash, |entry| entry.escape_mode)
     }
 
     /// Gets the current character set for a connection.
@@ -218,15 +269,75 @@ impl ConnectionManager {
     }
 }
 
+/// Reads `sql_mode` from a freshly opened connection to decide how string
+/// literals must be escaped on it.
+///
+/// On failure the connection is assumed to be in the default mode. That is the
+/// safe fallback: it is also what the server does unless explicitly configured
+/// otherwise, and a wrong guess here is loud (broken queries), not silent.
+fn detect_escape_mode(conn: &mut PooledConn) -> EscapeMode {
+    let sql_mode: Option<String> = conn.query_first("SELECT @@SESSION.sql_mode").ok().flatten();
+
+    let Some(sql_mode) = sql_mode else {
+        Logger::warn(
+            "Could not read sql_mode; assuming backslash escaping. If the server runs with \
+             NO_BACKSLASH_ESCAPES, use prepared statements instead of mysql_format.",
+        );
+        return EscapeMode::Backslash;
+    };
+
+    if sql_mode
+        .split(',')
+        .any(|flag| flag.trim().eq_ignore_ascii_case("NO_BACKSLASH_ESCAPES"))
+    {
+        Logger::warn(
+            "Server runs with NO_BACKSLASH_ESCAPES: escaping switched to quote doubling. \
+             Only single-quoted literals can be escaped safely in this mode.",
+        );
+        EscapeMode::NoBackslashEscapes
+    } else {
+        EscapeMode::Backslash
+    }
+}
+
 /// Escapes a SQL identifier (table/column name) by removing backticks.
 /// Used for safe backtick-quoting: `escape_identifier(name)` -> `` `safe_name` ``
 pub fn escape_identifier(input: &str) -> String {
     input.replace('`', "")
 }
 
-/// Escapes a string for safe use in SQL queries.
-/// Pure function — no connection required.
-pub fn escape_string(input: &str) -> String {
+/// How string literals must be escaped on a given connection.
+///
+/// Under `sql_mode=NO_BACKSLASH_ESCAPES` the backslash stops being an escape
+/// character, so `\'` no longer escapes the quote: it becomes a literal
+/// backslash followed by a *live* quote, and the value breaks out of the
+/// literal. The only valid escape in that mode is doubling the quote.
+///
+/// Picking the wrong mode reopens SQL injection in **either** direction —
+/// emitting `\'` against a `NO_BACKSLASH_ESCAPES` server terminates the
+/// string early, and emitting `''` against a normal server lets an input of
+/// `\'` do the same. That is why the mode is detected per connection at
+/// `connect` and threaded explicitly to every call site instead of defaulting.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum EscapeMode {
+    /// Default MySQL: backslash escapes are honoured.
+    Backslash,
+    /// `sql_mode` contains `NO_BACKSLASH_ESCAPES`.
+    NoBackslashEscapes,
+}
+
+/// Escapes a string for safe interpolation into a **single-quoted** SQL
+/// literal, following the same rules as `mysql_real_escape_string`.
+///
+/// Under [`EscapeMode::NoBackslashEscapes`] only the quote is escaped (by
+/// doubling); every other byte is literal. As MySQL itself documents for that
+/// mode, the result is only safe inside single quotes — a double-quoted
+/// literal cannot be escaped safely there.
+pub fn escape_string(input: &str, mode: EscapeMode) -> String {
+    if mode == EscapeMode::NoBackslashEscapes {
+        return input.replace('\'', "''");
+    }
+
     let mut out = String::with_capacity(input.len() * 2);
     for ch in input.chars() {
         match ch {
@@ -246,6 +357,78 @@ pub fn escape_string(input: &str) -> String {
 /// Executes a query on a Pool, retrying once on connection-lost errors when auto_reconnect is true.
 /// Connection-lost errors are identified by error code 0 (non-MySQL errors such as IO errors,
 /// which the Rust mysql crate returns when the TCP connection is dropped by the server).
+/// Runs every step inside one `START TRANSACTION` … `COMMIT` on a single
+/// connection. Any failing step aborts the batch and rolls it back, so the
+/// database never observes a partially applied transaction.
+///
+/// Returns the cache of the **last** step, which is where `cache_affected_rows`
+/// and `cache_insert_id` are usually wanted.
+///
+/// There is deliberately no auto-reconnect retry here: replaying a transaction
+/// after a mid-flight connection loss could re-apply steps the server already
+/// committed. A dropped connection aborts the transaction and reports it.
+pub fn attempt_transaction(
+    pool: &Pool,
+    steps: &[crate::transaction::TxStep],
+) -> Result<CacheEntry, QueryError> {
+    let mut conn = pool.get_conn().map_err(|e| QueryError {
+        code: 0,
+        message: e.to_string(),
+    })?;
+
+    execute_query(&mut conn, "START TRANSACTION")?;
+
+    let mut last: Option<CacheEntry> = None;
+    for step in steps {
+        let outcome = if step.params.is_empty() {
+            execute_query(&mut conn, &step.query)
+        } else {
+            execute_prepared(&mut conn, &step.query, step.params.clone())
+        };
+
+        match outcome {
+            Ok(cache) => last = Some(cache),
+            Err(e) => {
+                // Best-effort: if the rollback itself fails the connection is
+                // already gone, and the server discards the transaction when it
+                // closes. The original error is what the caller needs.
+                let _ = execute_query(&mut conn, "ROLLBACK");
+                return Err(e);
+            }
+        }
+    }
+
+    execute_query(&mut conn, "COMMIT")?;
+
+    Ok(last.unwrap_or_else(|| CacheEntry::empty(String::from("START TRANSACTION"))))
+}
+
+/// Prepared-statement counterpart of [`attempt_query`], with the same
+/// single-retry auto-reconnect behaviour.
+pub fn attempt_prepared(
+    pool: &Pool,
+    query: &str,
+    params: Vec<mysql::Value>,
+    auto_reconnect: bool,
+) -> Result<CacheEntry, QueryError> {
+    let mut conn = pool.get_conn().map_err(|e| QueryError {
+        code: 0,
+        message: e.to_string(),
+    })?;
+
+    match execute_prepared(&mut conn, query, params.clone()) {
+        Err(ref e) if auto_reconnect && e.code == 0 => {
+            drop(conn);
+            let mut conn2 = pool.get_conn().map_err(|e2| QueryError {
+                code: 0,
+                message: e2.to_string(),
+            })?;
+            execute_prepared(&mut conn2, query, params)
+        }
+        other => other,
+    }
+}
+
 pub fn attempt_query(
     pool: &Pool,
     query: &str,
@@ -273,19 +456,21 @@ pub fn attempt_query(
 const MAX_RESULT_ROWS: usize = 100_000;
 
 /// Executes a query on a PooledConn and returns a CacheEntry with results.
-pub fn execute_query(conn: &mut PooledConn, query: &str) -> Result<CacheEntry, QueryError> {
-    let start = std::time::Instant::now();
+/// Rows and column metadata pulled off a result set, before the connection
+/// stats (affected rows, insert id, warnings) are read back from `conn`.
+struct RawResult {
+    rows: Vec<CacheRow>,
+    columns: Vec<String>,
+    field_types: Vec<u8>,
+    truncated: bool,
+}
 
-    let result = match conn.query_iter(query) {
-        Ok(r) => r,
-        Err(e) => {
-            return Err(QueryError {
-                code: extract_mysql_errno(&e),
-                message: e.to_string(),
-            });
-        }
-    };
-
+/// Drains a result set. Generic over the protocol so the text protocol
+/// (`query_iter`) and the binary/prepared protocol (`exec_iter`) share one
+/// implementation instead of two copies that can drift apart.
+fn collect_result<P: mysql::prelude::Protocol>(
+    result: mysql::QueryResult<'_, '_, '_, P>,
+) -> Result<RawResult, QueryError> {
     let cols_ref = result.columns();
     let columns: Vec<String> = cols_ref
         .as_ref()
@@ -323,29 +508,78 @@ pub fn execute_query(conn: &mut PooledConn, query: &str) -> Result<CacheEntry, Q
         }
     }
 
-    if truncated {
+    Ok(RawResult {
+        rows,
+        columns,
+        field_types,
+        truncated,
+    })
+}
+
+/// Turns a drained result set plus the connection's post-execution stats into
+/// a cache entry.
+fn build_cache_entry(
+    conn: &mut PooledConn,
+    raw: RawResult,
+    start: std::time::Instant,
+    query: &str,
+) -> CacheEntry {
+    if raw.truncated {
         crate::logger::Logger::warn(&format!(
             "Query result truncated to {} rows.",
             MAX_RESULT_ROWS
         ));
     }
 
-    let exec_time = start.elapsed().as_micros();
-
-    let affected_rows = conn.affected_rows();
-    let insert_id = conn.last_insert_id();
-    let warning_count = conn.warnings();
-
-    Ok(CacheEntry::new(
-        rows,
-        columns,
-        field_types,
-        affected_rows,
-        insert_id,
-        warning_count,
-        exec_time,
+    CacheEntry::new(
+        raw.rows,
+        raw.columns,
+        raw.field_types,
+        conn.affected_rows(),
+        conn.last_insert_id(),
+        conn.warnings(),
+        start.elapsed().as_micros(),
         query.to_string(),
-    ))
+    )
+}
+
+pub fn execute_query(conn: &mut PooledConn, query: &str) -> Result<CacheEntry, QueryError> {
+    let start = std::time::Instant::now();
+
+    let raw = {
+        let result = conn.query_iter(query).map_err(|e| QueryError {
+            code: extract_mysql_errno(&e),
+            message: e.to_string(),
+        })?;
+        collect_result(result)?
+    };
+
+    Ok(build_cache_entry(conn, raw, start, query))
+}
+
+/// Runs `query` through the binary protocol with `params` bound server-side.
+///
+/// The values never enter the SQL text, so no escaping is involved and the
+/// server cannot reinterpret a value as syntax — which is what makes this
+/// immune to injection rather than merely defended against it.
+pub fn execute_prepared(
+    conn: &mut PooledConn,
+    query: &str,
+    params: Vec<mysql::Value>,
+) -> Result<CacheEntry, QueryError> {
+    let start = std::time::Instant::now();
+
+    let raw = {
+        let result = conn
+            .exec_iter(query, mysql::Params::Positional(params))
+            .map_err(|e| QueryError {
+                code: extract_mysql_errno(&e),
+                message: e.to_string(),
+            })?;
+        collect_result(result)?
+    };
+
+    Ok(build_cache_entry(conn, raw, start, query))
 }
 
 /// Extracts the MySQL error number from a mysql::Error.
@@ -364,66 +598,87 @@ mod tests {
 
     #[test]
     fn escape_empty_string() {
-        assert_eq!(escape_string(""), "");
+        assert_eq!(escape_string("", EscapeMode::Backslash), "");
     }
 
     #[test]
     fn escape_no_special_chars() {
-        assert_eq!(escape_string("hello world"), "hello world");
+        assert_eq!(
+            escape_string("hello world", EscapeMode::Backslash),
+            "hello world"
+        );
     }
 
     #[test]
     fn escape_single_quote() {
-        assert_eq!(escape_string("it's"), "it\\'s");
+        assert_eq!(escape_string("it's", EscapeMode::Backslash), "it\\'s");
     }
 
     #[test]
     fn escape_double_quote() {
-        assert_eq!(escape_string(r#"say "hi""#), r#"say \"hi\""#);
+        assert_eq!(
+            escape_string(r#"say "hi""#, EscapeMode::Backslash),
+            r#"say \"hi\""#
+        );
     }
 
     #[test]
     fn escape_backslash() {
-        assert_eq!(escape_string(r"path\to"), r"path\\to");
+        assert_eq!(
+            escape_string(r"path\to", EscapeMode::Backslash),
+            r"path\\to"
+        );
     }
 
     #[test]
     fn escape_null_byte() {
-        assert_eq!(escape_string("a\0b"), "a\\0b");
+        assert_eq!(escape_string("a\0b", EscapeMode::Backslash), "a\\0b");
     }
 
     #[test]
     fn escape_newline() {
-        assert_eq!(escape_string("line1\nline2"), "line1\\nline2");
+        assert_eq!(
+            escape_string("line1\nline2", EscapeMode::Backslash),
+            "line1\\nline2"
+        );
     }
 
     #[test]
     fn escape_carriage_return() {
-        assert_eq!(escape_string("line1\rline2"), "line1\\rline2");
+        assert_eq!(
+            escape_string("line1\rline2", EscapeMode::Backslash),
+            "line1\\rline2"
+        );
     }
 
     #[test]
     fn escape_ctrl_z() {
-        assert_eq!(escape_string("data\x1aend"), "data\\Zend");
+        assert_eq!(
+            escape_string("data\x1aend", EscapeMode::Backslash),
+            "data\\Zend"
+        );
     }
 
     #[test]
     fn escape_multiple_special_chars() {
         assert_eq!(
-            escape_string("it's a \"test\"\nwith\\stuff"),
+            escape_string("it's a \"test\"\nwith\\stuff", EscapeMode::Backslash),
             "it\\'s a \\\"test\\\"\\nwith\\\\stuff"
         );
     }
 
     #[test]
     fn escape_utf8_passthrough() {
-        assert_eq!(escape_string("café ñ 日本語"), "café ñ 日本語");
+        assert_eq!(
+            escape_string("café ñ 日本語", EscapeMode::Backslash),
+            "café ñ 日本語"
+        );
     }
 
     #[test]
     fn escape_sql_injection_attempt() {
         assert_eq!(
-            escape_string("'; DROP TABLE users; --"),
+            escape_string("'; DROP TABLE users; --", EscapeMode::Backslash),
             "\\'; DROP TABLE users; --"
         );
     }
@@ -431,15 +686,15 @@ mod tests {
     #[test]
     fn escape_consecutive_quotes() {
         // Three quotes in a row must each be escaped individually.
-        assert_eq!(escape_string("'''"), "\\'\\'\\'");
+        assert_eq!(escape_string("'''", EscapeMode::Backslash), "\\'\\'\\'");
     }
 
     #[test]
     fn escape_already_escaped_is_double_escaped() {
         // Important invariant: feeding the function its own output produces
         // a different (deeper-escaped) string. Callers must escape EXACTLY ONCE.
-        let once = escape_string("a'b");
-        let twice = escape_string(&once);
+        let once = escape_string("a'b", EscapeMode::Backslash);
+        let twice = escape_string(&once, EscapeMode::Backslash);
         assert_ne!(once, twice);
         // After two escapes: 'a', '\\', '\\', '\\', '\'', 'b'  → r"a\\\'b" with each char doubled.
         assert_eq!(twice, "a\\\\\\'b");
@@ -450,14 +705,58 @@ mod tests {
         // \0 \n \r \\ \' \" \x1a
         let input = "\0\n\r\\\'\"\x1a";
         let expected = "\\0\\n\\r\\\\\\'\\\"\\Z";
-        assert_eq!(escape_string(input), expected);
+        assert_eq!(escape_string(input, EscapeMode::Backslash), expected);
     }
 
     #[test]
     fn escape_low_control_chars_passthrough() {
         // Only \0 \n \r \x1a are special. Other low-ASCII control bytes
         // pass through unchanged (no \xNN encoding is done).
-        assert_eq!(escape_string("\x01\x07\x08\x0b"), "\x01\x07\x08\x0b");
+        assert_eq!(
+            escape_string("\x01\x07\x08\x0b", EscapeMode::Backslash),
+            "\x01\x07\x08\x0b"
+        );
+    }
+
+    // NO_BACKSLASH_ESCAPES mode
+
+    #[test]
+    fn no_backslash_mode_doubles_quote() {
+        assert_eq!(
+            escape_string("O'Brien", EscapeMode::NoBackslashEscapes),
+            "O''Brien"
+        );
+    }
+
+    #[test]
+    fn no_backslash_mode_leaves_backslash_literal() {
+        // The backslash is not an escape character in this mode, so doubling
+        // it would corrupt the value instead of protecting it.
+        assert_eq!(
+            escape_string(r"path\to", EscapeMode::NoBackslashEscapes),
+            r"path\to"
+        );
+    }
+
+    #[test]
+    fn no_backslash_mode_blocks_the_backslash_quote_escape() {
+        // The attack the mode enables: under NO_BACKSLASH_ESCAPES the server
+        // reads `\'` as a literal backslash followed by a LIVE quote, so the
+        // backslash escaper would let this input terminate the literal early.
+        // Doubling leaves no unpaired quote behind.
+        let escaped = escape_string(r"\' OR 1=1 -- ", EscapeMode::NoBackslashEscapes);
+        assert_eq!(escaped, r"\'' OR 1=1 -- ");
+        assert_eq!(escaped.matches('\'').count() % 2, 0);
+    }
+
+    #[test]
+    fn backslash_mode_still_escapes_the_quote() {
+        // Same input on a default server: here the backslash IS an escape
+        // character, so the quote must be backslash-escaped instead.
+        assert_eq!(
+            escape_string(r"\' OR 1=1 -- ", EscapeMode::Backslash),
+            r"\\\' OR 1=1 -- "
+        );
     }
 
     // escape_identifier tests

@@ -3,4 +3,7 @@ pub mod connection;
 pub mod error;
 pub mod options;
 pub mod orm;
+pub mod password;
 pub mod query;
+pub mod stmt;
+pub mod transaction;

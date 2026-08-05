@@ -71,6 +71,10 @@ impl MysqlPlugin {
     #[native(name = "mysql_close")]
     pub fn mysql_close(&mut self, _amx: &Amx, connection_id: i32) -> bool {
         if self.connections.disconnect(connection_id) {
+            // Statements and transactions bound to this connection can never
+            // execute again; dropping them keeps the maps from growing.
+            self.stmts.destroy_by_conn(connection_id);
+            self.transactions.destroy_by_conn(connection_id);
             Logger::info(&format!("Connection {} closed.", connection_id));
             true
         } else {
