@@ -34,8 +34,11 @@ The same handle can be reused across multiple `mysql_connect` calls.
 | Constant | Integer / String | Default | Description |
 |---|---|---|---|
 | `MYSQL_OPT_PORT` | int | `3306` | TCP port. Must fit in `u16` (`0..=65535`). |
-| `MYSQL_OPT_SSL` | int (bool) | `0` (off) | SSL toggle — **currently a no-op**, see [SSL caveat](#ssl) below. |
-| `MYSQL_OPT_SSL_CA` | string | empty | Path to a PEM CA file — **currently a no-op**, see [SSL caveat](#ssl) below. |
+| `MYSQL_OPT_SSL` | int (bool) | `0` (off) | Enables TLS for the connection. See [SSL](#ssl). |
+| `MYSQL_OPT_SSL_CA` | string | empty | Path to a PEM/DER CA file used to verify the server. See [SSL](#ssl). |
+| `MYSQL_OPT_SSL_CERT` | string | empty | Client certificate chain for mutual TLS. Requires `MYSQL_OPT_SSL_KEY`. |
+| `MYSQL_OPT_SSL_KEY` | string | empty | Client private key for mutual TLS. Requires `MYSQL_OPT_SSL_CERT`. |
+| `MYSQL_OPT_SSL_VERIFY_CERT` | int (bool) | `1` (on) | Verifies the server certificate and hostname. Disabling it is dangerous. |
 | `MYSQL_OPT_CONNECT_TIMEOUT` | int (seconds) | none | TCP connect timeout. Must fit in `u32`. |
 | `MYSQL_OPT_AUTO_RECONNECT` | int (bool) | `1` (on) | Retry a query once when the server drops the connection (see [MYSQL_OPT_AUTO_RECONNECT](#mysql_opt_auto_reconnect)). |
 
@@ -74,9 +77,40 @@ This option only affects in-flight queries. The TCP handshake inside `mysql_conn
 
 ### SSL
 
-> **Important caveat.** `MYSQL_OPT_SSL` and `MYSQL_OPT_SSL_CA` are accepted by `mysql_options_set_int` / `mysql_options_set_str` and the values are stored in the options struct, but the connection builder in [`src/connection.rs`](https://github.com/NullSablex/mysql_samp/blob/master/src/connection.rs) does **not** wire them through to the `mysql` crate yet — there is a `TODO` waiting for the `mysql` crate to expose rustls-friendly options. Setting these today has no effect on the connection: the plugin always connects in clear text.
+`MYSQL_OPT_SSL` turns on TLS for the connection. The TLS backend (rustls) is compiled into the binary — no OpenSSL, no system library to install.
 
-The `mysql` crate is compiled with the `default-rust` feature (rustls is in the binary), so the SSL plumbing exists in the dependency tree — it just is not exposed by the plugin yet. Until that lands, plan around it (use a TLS-terminating proxy, or accept the limitation in your threat model).
+```pawn
+new opts = mysql_options_new();
+mysql_options_set_int(opts, MYSQL_OPT_SSL, 1);
+mysql_options_set_str(opts, MYSQL_OPT_SSL_CA, "certs/ca.pem");
+```
+
+#### Which certificates are trusted
+
+Without `MYSQL_OPT_SSL_CA`, the driver trusts the **webpki root bundle compiled into the plugin** (the Mozilla root list) — *not* your operating system's trust store. That distinction matters in practice: a MySQL server using a self-signed certificate or an internal/company CA — the usual setup for a game server — is **not** in that bundle, so the connection fails until you point `MYSQL_OPT_SSL_CA` at the CA that signed it.
+
+Use the public roots only when connecting to a managed provider whose certificate chains to a public CA (RDS, Cloud SQL, PlanetScale, …).
+
+#### Mutual TLS
+
+When the server requires a client certificate, supply both halves:
+
+```pawn
+mysql_options_set_str(opts, MYSQL_OPT_SSL_CERT, "certs/client-cert.pem");
+mysql_options_set_str(opts, MYSQL_OPT_SSL_KEY,  "certs/client-key.pem");
+```
+
+Setting only one of the two logs a warning and the client certificate is ignored — TLS still proceeds without it. Keys may be PKCS#1, PKCS#8 or SEC1, in PEM or DER.
+
+#### Disabling verification
+
+```pawn
+mysql_options_set_int(opts, MYSQL_OPT_SSL_VERIFY_CERT, 0);  // dangerous
+```
+
+This accepts **any** certificate and skips the hostname check. Traffic stays encrypted, but an attacker who can intercept the connection can present their own certificate and read or alter every query — which is exactly what TLS is supposed to prevent. It logs a warning on every connect.
+
+Reach for `MYSQL_OPT_SSL_CA` instead: pointing at the CA file is the correct fix for a self-signed server, and it keeps verification intact.
 
 ## Setting a string option on an int-only option (or vice-versa)
 
@@ -87,7 +121,7 @@ mysql_options_set_str(opts, MYSQL_OPT_PORT, "3307");  // returns false, port is 
 mysql_options_set_int(opts, MYSQL_OPT_SSL_CA, 1);     // returns false, ssl_ca is string
 ```
 
-The only string option today is `MYSQL_OPT_SSL_CA`. Everything else is int.
+The string options are `MYSQL_OPT_SSL_CA`, `MYSQL_OPT_SSL_CERT` and `MYSQL_OPT_SSL_KEY`. Everything else is int.
 
 ## Out-of-range integers
 

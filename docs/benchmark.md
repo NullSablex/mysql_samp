@@ -192,8 +192,8 @@ libz.so.1: cannot open shared object file: No such file or directory
 
 **No external runtime dependencies.** The binary is fully self-contained:
 
-- TLS/SSL via **rustls** (pure Rust, embedded in the binary). Note: the `MYSQL_OPT_SSL` / `MYSQL_OPT_SSL_CA` options exist but are not yet wired through to the connection layer — see [Options → SSL caveat](options.md#ssl).
-- MySQL driver via the `mysql` crate with the `default-rust` feature (no `libmysqlclient`).
+- TLS/SSL via **rustls**, embedded in the binary (`rustls-tls-ring`; the crypto core is C/assembly compiled in, so nothing is needed at runtime). `MYSQL_OPT_SSL`, `MYSQL_OPT_SSL_CA` and mutual TLS are wired through — see [Options → SSL](options.md#ssl).
+- MySQL driver via the `mysql` crate with `default-rust` + `rustls-tls-ring` (no `libmysqlclient`, no OpenSSL).
 - No Boost, no OpenSSL, no libz.
 
 Drop the `.so` or `.dll` into `plugins/` and it works on any Linux distribution.
@@ -240,7 +240,7 @@ Based on public issues at https://github.com/pBlueG/SA-MP-MySQL:
 mysql_samp does not have any of these by design:
 
 - **SIGSEGV on shutdown:** impossible in Rust — the borrow checker prevents access to freed data after threads end.
-- **SSL on Linux:** rustls does not depend on the system `libssl` — it works on any distribution. (The plugin needs to wire the options through; see [Options → SSL caveat](options.md#ssl).)
+- **SSL on Linux:** rustls does not depend on the system `libssl` — the plugin works on any distribution with no OpenSSL installed. See [Options → SSL](options.md#ssl).
 - **Missing `libz` / dependencies:** none exist — no external dependencies.
 - **FREE RESULT MISSING:** impossible — memory is freed automatically by Rust.
 
@@ -308,7 +308,7 @@ new orm     = orm_create("table", g_mysql);
 | Pawn tags | **No tags** | `MySQL:`, `Cache:`, `ORM:` |
 | Runtime dependencies | **None** | libssl + libmysqlclient + Boost |
 | Open Multiplayer | Native + legacy | Compatible (legacy) |
-| SSL/TLS | rustls (binary) — options not yet wired through | Via MySQL C Connector |
+| SSL/TLS | rustls, compiled into the binary; CA pinning and mutual TLS | Via MySQL C Connector |
 | Multi-result sets | Not supported | `cache_set_result()` |
 | Possible segfault | **No** | **Yes** (documented) |
 | Possible cache leak | **No** | Yes without `cache_delete()` |

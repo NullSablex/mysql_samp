@@ -70,9 +70,13 @@ mysql_format(g_mysql, query, sizeof(query),
 
 | R41-4 | mysql_samp |
 |---|---|
-| `mysql_escape_string(src, dest, max_len, MySQL:handle)` | `mysql_escape_string(src, dest, max_len)` |
+| `mysql_escape_string(src, dest, max_len, MySQL:handle)` | `mysql_escape_string(src, dest, max_len, connId)` |
 
-`mysql_samp` does not take a handle: the escape is a pure function. The charset is always UTF-8 (the plugin forces `SET NAMES utf8mb4` on every new connection).
+The connection stays, and **keep passing it**. It selects the escaping rules, which depend on the server's `sql_mode`: under `NO_BACKSLASH_ESCAPES` the backslash is not an escape character and only quote doubling is valid. The parameter is optional purely so old code keeps compiling — omitting it assumes the MySQL default, which is wrong (and unsafe) on a server running that mode.
+
+The charset is always UTF-8 (the plugin forces `SET NAMES utf8mb4` on every new connection).
+
+Better still: for anything carrying player input, skip escaping entirely and use [prepared statements](queries.md) — values are bound server-side and can never be reinterpreted as syntax.
 
 ## Cache — by-ref → return value
 
@@ -254,8 +258,8 @@ new g_mysql = mysql_connect("127.0.0.1", "root", "pass", "db");
 // before
 mysql_escape_string(input, escaped, sizeof(escaped), g_mysql);
 
-// after
-mysql_escape_string(input, escaped);
+// after — keep the connection, it selects the escaping rules
+mysql_escape_string(input, escaped, sizeof(escaped), g_mysql);
 ```
 
 ### 6. Convert cache reads to return-value form

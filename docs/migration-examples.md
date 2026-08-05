@@ -706,10 +706,10 @@ mysql_escape_string(input, escaped, sizeof(escaped), g_mysql);
 
 ```pawn
 new escaped[128];
-mysql_escape_string(input, escaped);
+mysql_escape_string(input, escaped, sizeof(escaped), g_mysql);
 ```
 
-> **Changes:** no handle as the last parameter. The escape rules are connection-independent — the plugin always forces UTF-8.
+> **Changes:** the handle stays (as `connId`) and should be passed — it selects the escaping rules for the server's `sql_mode`. The charset is always UTF-8; the plugin forces `SET NAMES utf8mb4`.
 
 ---
 
@@ -766,7 +766,7 @@ For a mechanical first pass, search and replace in your gamemode:
 > - `cache_get_value_*_int` / `_float`: change from 3-arg by-ref to 2-arg return value.
 > - `cache_is_value_*_null`: change from 3-arg by-ref to 2-arg return value.
 > - `cache_get_row_count` / `cache_get_field_count`: change from by-ref to return value.
-> - `mysql_escape_string`: drop the `MySQL:handle` parameter.
+> - `mysql_escape_string`: keep the connection — it selects the escaping rules for the server's `sql_mode`. Prefer prepared statements (`mysql_stmt_*`) for player input.
 > - `mysql_error`: reverse the order — `mysql_error(connId, dest)` instead of `mysql_error(dest, max_len, handle)`.
 > - `mysql_set_option` → `mysql_options_set_int` / `mysql_options_set_str`.
 > - `%s` → `%r` where the old `%s` was intentionally raw. `%e` → `%s` (or keep `%e`).

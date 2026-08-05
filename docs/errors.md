@@ -109,10 +109,31 @@ Detailed entries with timestamp:
 ```
 [2026-05-18 14:30:15] [ERROR] Pool creation failed: Access denied for user 'root'@'localhost'
 [2026-05-18 14:30:20] [ERROR] Query error: You have an error in your SQL syntax; check the manual ...
-[2026-05-18 14:30:30] [WARNING] cache_save failed: maximum saved caches reached (1024).
+[2026-05-18 14:30:30] [WARN] cache_save failed: maximum saved caches reached (1024).
 ```
 
-If the directory or the file is not writable, the plugin emits **one** console error of the form `[MySQL] Failed to write logs/mysql.log: <io error>. Further file-write errors will be suppressed.` and then stops trying. This avoids flooding the console when the disk is full or permissions are wrong.
+If the directory or the file is not writable, the plugin emits **one** console error and then stops trying. This avoids flooding the console when the disk is full or permissions are wrong.
+
+#### Rotation
+
+When `logs/mysql.log` passes 50 MB it is moved into `logs/archive/mysql.log.{N}.gz` and a fresh file is opened. Archives are gzipped (log text compresses roughly 10x) and are **never deleted** by the plugin — cleanup is the server operator's call. Set `MYSQL_SAMP_LOG_ROTATION_KEEP` to have it prune automatically.
+
+#### Environment overrides
+
+The log pipeline can be retuned without rebuilding the plugin. Every variable is optional; an invalid value is reported on the console and the default is kept.
+
+| Variable | Effect |
+| --- | --- |
+| `MYSQL_SAMP_LOG_LEVEL` | Minimum severity (`off`, `error`, `warn`, `info`, `debug`, `trace`) |
+| `MYSQL_SAMP_LOG_DIR` | Directory holding the log file (default `logs`) |
+| `MYSQL_SAMP_LOG_FILE` | File name (default `mysql.log`) |
+| `MYSQL_SAMP_LOG_ROTATION_MB` | Rotation threshold in MB (default `50`) |
+| `MYSQL_SAMP_LOG_ROTATION_KEEP` | Keep only the last N archives, deleting older ones |
+| `MYSQL_SAMP_LOG_NO_ROTATION` | Disable rotation entirely |
+| `MYSQL_SAMP_LOG_NO_BANNER` | Suppress the startup banner |
+| `MYSQL_SAMP_LOG_COMPRESS` | `0` writes uncompressed archives instead of `.gz` |
+
+`mysql_log()` called from Pawn overrides `MYSQL_SAMP_LOG_LEVEL` at runtime.
 
 ### Log level
 
@@ -133,5 +154,5 @@ The setting is atomic and takes effect immediately.
 1. **Always check `mysql_errno()` after `mysql_connect`** — a failed connect returns `0`. Without a check, the gamemode happily issues queries against connection `0`, which is invalid.
 2. **Implement `OnQueryError`** — a missing implementation is not a compile error, but you will be flying blind when a query fails in production.
 3. **Read `logs/mysql.log` for the long error text** — the console does not have the SQL or the original server message.
-4. **Use `mysql_format` with `%s`** — it escapes by default and removes a whole class of SQL injection bugs.
+4. **Use prepared statements (`mysql_stmt_*`) for player input** — values are bound server-side, so there is no escaping to get wrong. `mysql_format` with `%s` escapes correctly too, but only as long as the rules match the server's `sql_mode`.
 5. **Guard cache reads with `cache_get_row_count()`** — avoids spurious `-1` / `0` / empty-string readings when the result is empty.

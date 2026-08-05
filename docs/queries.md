@@ -156,12 +156,14 @@ mysql_format(g_mysql, query, sizeof(query),
 ## mysql_escape_string
 
 ```pawn
-native bool:mysql_escape_string(const src[], dest[], max_len = sizeof(dest));
+native bool:mysql_escape_string(const src[], dest[], max_len = sizeof(dest), connId = 0);
 ```
 
-Pure escape function — no connection required because the escape rules are connection-independent under UTF-8 (which the plugin forces on every pool connection). Returns `true` on success, `false` only if writing into `dest` fails.
+Returns `true` on success, `false` only if writing into `dest` fails.
 
-Characters escaped: `\0`, `\n`, `\r`, `\\`, `'`, `"`, `\x1a` (Ctrl-Z). Every other byte (including `\t`, control bytes, and multi-byte UTF-8) passes through unchanged.
+`connId` selects the escaping rules, which depend on the server's `sql_mode`. **Pass the real connection.** The parameter is optional purely so older code keeps compiling; the default assumes standard MySQL rules, which are wrong — and unsafe — on a server running `NO_BACKSLASH_ESCAPES`. See [Security](security.md#escape-rules).
+
+Under the default `sql_mode`, the characters escaped are `\0`, `\n`, `\r`, `\\`, `'`, `"`, `\x1a` (Ctrl-Z). Every other byte (including `\t`, control bytes, and multi-byte UTF-8) passes through unchanged.
 
 ```pawn
 new escaped[128];
@@ -171,6 +173,68 @@ mysql_escape_string(input, escaped);
 ```
 
 **Never call `mysql_escape_string` on a string and then pass the result through `%s`** — `%s` escapes again and you end up with `\\'` instead of `\'`.
+
+## Prepared statements
+
+The safe alternative to escaping. Values are bound server-side over the binary protocol, so they never enter the SQL text — there is nothing to escape and nothing to get wrong. Use these for anything carrying player input.
+
+```pawn
+native mysql_stmt_new(connId, const query[]);
+native bool:mysql_stmt_bind_int(stmtId, value);
+native bool:mysql_stmt_bind_float(stmtId, Float:value);
+native bool:mysql_stmt_bind_str(stmtId, const value[]);
+native bool:mysql_stmt_bind_null(stmtId);
+native bool:mysql_stmt_reset(stmtId);
+native bool:mysql_stmt_execute(stmtId, const callback[] = "", const format[] = "", {Float,_}:...);
+native bool:mysql_stmt_close(stmtId);
+```
+
+```pawn
+new stmt = mysql_stmt_new(g_mysql, "SELECT id FROM players WHERE name = ? AND score > ?");
+mysql_stmt_bind_str(stmt, playerName);
+mysql_stmt_bind_int(stmt, 100);
+mysql_stmt_execute(stmt, "OnPlayersFound", "d", playerid);
+mysql_stmt_close(stmt);
+```
+
+`mysql_stmt_execute` is non-blocking and FIFO-ordered, exactly like `mysql_query`, and the result reaches the callback through the same cache stack.
+
+Notes:
+
+- **Bind order matters** — values are positional, matching the `?` placeholders left to right.
+- **Counts must match.** If the number of bound values differs from the number of placeholders, `mysql_stmt_execute` returns `false` and logs both numbers instead of sending a broken query.
+- **`mysql_stmt_reset` keeps the statement, drops the values** — useful for bulk inserts.
+- **A `?` stands for a value, never an identifier.** `SELECT * FROM ?` is not valid SQL. Build identifiers from a whitelist you control.
+- **Values stay out of the logs.** Only the template with its placeholders reaches `logs/mysql.log` and `cache_get_query_string()`.
+- Placeholders are counted outside of quoted strings and comments, so a literal `?` inside `'...'` or `/* ... */` is not mistaken for one.
+
+## Transactions
+
+Runs a group of statements atomically: `START TRANSACTION`, every step, `COMMIT`. Any failing step rolls the whole batch back and fires `OnQueryError`.
+
+```pawn
+native mysql_transaction_new(connId);
+native bool:mysql_transaction_add(txId, const query[]);
+native bool:mysql_transaction_add_stmt(txId, stmtId);
+native bool:mysql_transaction_execute(txId, const callback[] = "", const format[] = "", {Float,_}:...);
+native bool:mysql_transaction_destroy(txId);
+```
+
+```pawn
+new tx = mysql_transaction_new(g_mysql);
+mysql_transaction_add(tx, "UPDATE accounts SET balance = balance - 100 WHERE id = 1");
+mysql_transaction_add(tx, "UPDATE accounts SET balance = balance + 100 WHERE id = 2");
+mysql_transaction_execute(tx, "OnTransferDone", "d", playerid);
+```
+
+Notes:
+
+- **There is no interactive begin/commit.** Holding a pooled connection between server ticks would leak it whenever a gamemode never reached the commit — an early `return`, a runtime error, a disconnect. Collecting the steps first avoids that entirely.
+- **`mysql_transaction_execute` consumes the handle.** The ID is invalid afterwards, so a batch cannot run twice by accident.
+- **The callback receives the cache of the last step**, which is where `cache_affected_rows` and `cache_insert_id` are usually wanted.
+- **Use `mysql_transaction_add_stmt` for player input** — it copies a prepared statement together with its bound values.
+- **No auto-reconnect retry.** Replaying a transaction after a mid-flight connection loss could re-apply steps the server already committed, so a dropped connection aborts and reports instead.
+- Build a batch and change your mind? Call `mysql_transaction_destroy`.
 
 ## Inspecting the queue
 
