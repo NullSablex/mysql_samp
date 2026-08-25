@@ -1,36 +1,44 @@
-# Keeps the pinned dependencies fresh. Without this, SHA-pinned actions and the
-# hash-pinned docs lockfile would silently rot — pinning trades automatic
-# updates for reproducibility, and Dependabot is what pays that back.
-#
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
-
 version: 2
 updates:
-  # GitHub Actions. Dependabot understands the `uses: owner/repo@<sha> # vX`
-  # convention and bumps both the SHA and the trailing comment, so the pins
-  # stay readable instead of decaying into opaque hashes.
-  - package-ecosystem: github-actions
-    directory: /
+  - package-ecosystem: "github-actions"
+    directory: "/"
     schedule:
-      interval: weekly
+      interval: "weekly"
+    open-pull-requests-limit: 5
     commit-message:
-      prefix: ci
-
-  # Rust dependencies. Note the plugin pins `samp` to a git revision; Dependabot
-  # does not bump git dependencies, so that one stays a manual step (see the
-  # versioning section of CLAUDE.md).
-  - package-ecosystem: cargo
-    directory: /
+      prefix: "chore(deps)"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+  - package-ecosystem: "cargo"
+    directory: "/"
     schedule:
-      interval: weekly
+      interval: "weekly"
+    open-pull-requests-limit: 5
     commit-message:
-      prefix: deps
-
-  # MkDocs build dependencies. Docs-only, shipped in no artifact, but a
-  # vulnerable markdown extension still runs in CI.
-  - package-ecosystem: pip
-    directory: /docs
+      prefix: "chore(deps)"
+    groups:
+      cargo:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+  - package-ecosystem: "pip"
+    directory: "/docs"
     schedule:
-      interval: weekly
+      interval: "weekly"
+    open-pull-requests-limit: 5
     commit-message:
-      prefix: docs
+      prefix: "chore(deps)"
+    groups:
+      pip:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
