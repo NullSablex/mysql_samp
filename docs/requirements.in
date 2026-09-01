@@ -9,4 +9,4 @@
 mkdocs-material==9.7.7
 # Floor above the transitive default: pulls the fix for CVE-2026-61632
 # (path traversal in the b64 extension). mkdocs-material only requires >=10.2.
-pymdown-extensions>=11.0.0
+pymdown-extensions>=11.0.2
