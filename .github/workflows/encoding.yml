@@ -1,0 +1,33 @@
+# Encoding guard for the Pawn sources.
+#
+# The SA-MP and open.mp compilers read `.inc` / `.pwn` files as bytes, not as
+# UTF-8, so a stray accented character or typographic dash reaches the server as
+# mojibake instead of failing loudly at compile time. This job catches that
+# before it is merged.
+name: Encoding
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  workflow_dispatch:
+
+# Nothing here needs a token beyond reading the code: the default is empty and
+# the single job opts into `contents: read` for the checkout, nothing more.
+permissions: {}
+
+jobs:
+  pawn-encoding:
+    name: Pawn sources are pure ASCII
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Only the standard library is used, so the runner's Python is enough.
+      - name: Check the includes, examples and benchmarks
+        run: python3 .github/scripts/check_pawn_encoding.py --github

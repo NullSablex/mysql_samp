@@ -13,6 +13,8 @@ MySQL plugin for SA-MP and Open Multiplayer, written entirely in Rust. Non-block
 
 The same `.so` / `.dll` runs on SA-MP and on Open Multiplayer — natively as a component (recommended) or via legacy mode. See [Installation](installation.md) for both registration paths.
 
+The API ships under two names, as **alternative** includes over the same binary: `<mysql_samp>` for the plugin's own snake_case (`mysql_connect`) and `<mysql_samp_omp>` for open.mp's `Prefix_PascalCase` (`MySQL_Connect`). The styled names are plain Pawn aliases, so there is no runtime cost — pick one per script. The examples throughout these docs use the snake_case style.
+
 ## Where to start
 
 | Goal | Path |

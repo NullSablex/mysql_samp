@@ -15,7 +15,8 @@ env:
 jobs:
   build-release:
     runs-on: ubuntu-latest
-    # Needs write access to create the release and upload .so/.dll/.inc.
+    # Needs write access to create the release and upload the .so/.dll and
+    # both .inc files.
     permissions:
       contents: write
 
@@ -73,6 +74,7 @@ jobs:
           cp "target/i686-unknown-linux-gnu/release/lib${PLUGIN_NAME}.so" "dist/${PLUGIN_NAME}.so"
           cp "target/i686-pc-windows-msvc/release/${PLUGIN_NAME}.dll"     "dist/${PLUGIN_NAME}.dll"
           cp "include/${PLUGIN_NAME}.inc"                                 "dist/${PLUGIN_NAME}.inc"
+          cp "include/${PLUGIN_NAME}_omp.inc"                             "dist/${PLUGIN_NAME}_omp.inc"
 
       - name: Build release body
         env:
@@ -115,6 +117,7 @@ jobs:
           - \`${PLUGIN_NAME}.so\` — Linux i686 (\`i686-unknown-linux-gnu\`).
           - \`${PLUGIN_NAME}.dll\` — Windows i686 (\`i686-pc-windows-msvc\`).
           - \`${PLUGIN_NAME}.inc\` — Pawn include, identical file for SA-MP and Open Multiplayer.
+          - \`${PLUGIN_NAME}_omp.inc\` — the same API under open.mp's \`Prefix_PascalCase\` naming (\`MySQL_Connect\`, \`Cache_GetRowCount\`). Pure Pawn aliases; pick one include per script, not both.
 
           The same \`.so\` / \`.dll\` runs on SA-MP and on Open Multiplayer (native component or legacy). Installation paths: see [\`docs/installation.md\`](https://github.com/${GITHUB_REPOSITORY}/blob/master/docs/installation.md).
           EOF
@@ -145,5 +148,6 @@ jobs:
             dist/${{ env.PLUGIN_NAME }}.so
             dist/${{ env.PLUGIN_NAME }}.dll
             dist/${{ env.PLUGIN_NAME }}.inc
+            dist/${{ env.PLUGIN_NAME }}_omp.inc
           draft: false
           prerelease: false

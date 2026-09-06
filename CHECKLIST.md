@@ -1,6 +1,6 @@
 # Checklist: mysql_samp vs MySQL R41-4
 
-Coverage of the MySQL R41-4 (BlueG / maddinat0r) Pawn API by **mysql_samp**. Source of truth: [`include/mysql_samp.inc.in`](include/mysql_samp.inc.in) and [`src/lib.rs`](src/lib.rs). Current plugin version lives in [`Cargo.toml`](Cargo.toml).
+Coverage of the MySQL R41-4 (BlueG / maddinat0r) Pawn API by **mysql_samp**. Source of truth: [`include/mysql_samp.inc.in`](include/mysql_samp.inc.in) and [`src/lib.rs`](src/lib.rs). Names are given in the snake_case style of [`<mysql_samp>`](include/mysql_samp.inc); the alternative include [`<mysql_samp_omp>`](include/mysql_samp_omp.inc) declares the same set under open.mp's `Prefix_PascalCase` convention. Current plugin version lives in [`Cargo.toml`](Cargo.toml).
 
 ## Connection
 

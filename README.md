@@ -50,9 +50,11 @@ The same binary loads on SA-MP and on Open Multiplayer — natively as a compone
    - `mysql_samp.inc` (Pawn include, shared between SA-MP and Open Multiplayer)
    - `mysql_samp_omp.inc` (optional — the same API in open.mp's `Prefix_PascalCase` naming style)
 2. Place the binary in the server's `plugins/` directory.
-3. Copy `mysql_samp.inc` to your compiler's include folder:
+3. Copy the include(s) you want to your compiler's include folder:
    - **Windows:** `pawno/include/` or `qawno/include/`
    - **Linux:** `include/` (at the server root)
+
+   Both files can sit side by side — they are alternatives, so pick one per script, never both in the same one.
 4. Register the plugin:
    - **SA-MP** — add to `server.cfg`:
      ```
