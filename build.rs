@@ -27,6 +27,18 @@ fn main() {
     println!("cargo:rustc-env=BUILD_TIME={time}");
     println!("cargo:rustc-env=BUILD_YEAR={year}");
 
+    // Declare the script's real inputs. Without this, Cargo assumes the build
+    // script depends on every file in the package, so editing a generated .inc,
+    // an example, or a doc re-runs the script and invalidates the Rust
+    // build/test cache for no reason. Listing the inputs scopes the re-run to
+    // what actually feeds the generation: the template, this script, and the
+    // manifest (for the version). A clean build (releases) still runs the
+    // script, so BUILD_* reflect that build; incremental dev builds keep the
+    // BUILD_* from the last input change, which is fine for the banner.
+    println!("cargo:rerun-if-changed=include/mysql_samp.inc.in");
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=Cargo.toml");
+
     generate_inc();
 }
 
@@ -36,11 +48,9 @@ fn generate_inc() {
     let template_path = "include/mysql_samp.inc.in";
     let output_path = "include/mysql_samp.inc";
 
-    // No `cargo:rerun-if-changed` directives: build.rs runs on every build
-    // so the .inc tracks the current Cargo version, build date and template
-    // without manual intervention. The write below is idempotent - it only
-    // touches disk when the rendered output actually differs from the file
-    // on disk, so the always-run policy does not churn timestamps.
+    // The write below is idempotent: it only touches disk when the rendered
+    // output actually differs, so a re-run never churns timestamps (which would
+    // otherwise cascade back into the build).
 
     let template = fs::read_to_string(template_path)
         .unwrap_or_else(|e| panic!("failed to read {template_path}: {e}"));

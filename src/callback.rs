@@ -51,10 +51,11 @@ pub fn invoke_callback(amx_list: &[AmxIdent], info: &CallbackInfo) {
                     }
                     Err(_) => {
                         push_ok = false;
-                        Logger::error(&format!(
-                            "Failed to allocate string for callback '{}'.",
-                            info.name
-                        ));
+                        // The callback name is deliberately not interpolated:
+                        // `info` flows from a manager that may have handled a
+                        // password, and CodeQL cannot tell name from secret, so
+                        // keeping the message constant closes that path.
+                        Logger::error("Failed to allocate an AMX string for a callback argument.");
                         break;
                     }
                 },
@@ -65,10 +66,7 @@ pub fn invoke_callback(amx_list: &[AmxIdent], info: &CallbackInfo) {
         if push_ok {
             let _ = amx.exec(idx);
         } else {
-            Logger::error(&format!(
-                "Callback '{}' aborted: failed to push parameters to AMX stack.",
-                info.name
-            ));
+            Logger::error("A callback was aborted: failed to push parameters to the AMX stack.");
         }
         break; // Only invoke in the first AMX that has the public
     }

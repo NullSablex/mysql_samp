@@ -4,11 +4,37 @@ All notable changes to this project are documented in this file.
 
 Format inspired by [Keep a Changelog](https://keepachangelog.com/). Versioning follows [Semantic Versioning](https://semver.org/). Older entries live under [`changelog/`](changelog/).
 
-## [Unreleased]
+## [1.3.0] — 2026/09/07
+
+Built on rust-samp v3.4.0 (unchanged since 1.2.0). Additive release: no Pawn native was removed or renamed, so 1.2.0 gamemodes compile unchanged.
 
 ### Added
 
-- **open.mp naming style** — a second include, `<mysql_samp_omp>`, exposes every native under open.mp's `Prefix_PascalCase` convention: `MySQL_Connect`, `MySQL_Query`, `Cache_GetRowCount`, `ORM_Create`, `MySQL_TransactionExecute`, `MySQL_HashPassword`, and so on. Each name is a Pawn alias (`native MySQL_Connect(...) = mysql_connect;`) to the real snake_case native, so there is **no runtime cost and no change on the plugin side** — the same `.so`/`.dll` serves both. Include `<mysql_samp>` for the original style or `<mysql_samp_omp>` for the styled one — they are alternatives, not layers, so pick one per script. The styled include is self-contained (it carries its own copy of the `MYSQL_OPT_*` enums and the `OnQueryError` forward) and is generated from the base by `build.rs` on every build, so the two can never drift: a native, enum or constant added to the template appears in both automatically.
+- **open.mp naming style** — a second include, `<mysql_samp_omp>`, exposes every native under open.mp's `Prefix_PascalCase` convention: `MySQL_Connect`, `MySQL_Query`, `Cache_GetRowCount`, `ORM_Create`, `MySQL_TransactionExecute`, `MySQL_HashPassword`, and so on. Each name is a Pawn alias (`native MySQL_Connect(...) = mysql_connect;`) to the real snake_case native, so there is **no runtime cost and no change on the plugin side** — the same `.so`/`.dll` serves both. Include `<mysql_samp>` for the original style or `<mysql_samp_omp>` for the styled one — they are alternatives, not layers, so pick one per script. The styled include is self-contained (it carries its own copy of the `MYSQL_OPT_*` enums and the `OnQueryError` forward) and is generated from the base by `build.rs` on every build, so the two can never drift: a native, enum or constant added to the template appears in both automatically. (#34)
+- **JavaDoc on every native and on `OnQueryError`.** The include now documents each entry with a `/** */` block (`@param` / `@return`) — the style PawnPro surfaces on hover and autocomplete, and clearer than an XML doc comment. Short and to the point: one line of description, one `@param` per argument, one `@return`. The blocks flow into both includes from the same source. (#36)
+
+### Fixed
+
+- **`rust/cleartext-logging` alerts from CodeQL, closed by breaking the taint path.** These are false positives — the password never reaches a log — but they were fixed in code rather than dismissed (dismissal is repo state that decays as lines move). Two steps: #33 replaced the free-form failure `String` with a fixed `PasswordFailure` enum, and this release finishes the job. Reading the SARIF showed CodeQL still traced a second path — `poll_results()` → the callback info → `invoke_callback` → a `Logger::error` that interpolated `info.name` (the callback name like `"OnHashed"`, not the password, but CodeQL cannot tell a struct field from the secret). Those two infrastructure error logs no longer interpolate the callback name, so nothing from the password flow reaches a log at all. (#33 and this release)
+
+### Changed
+
+- **`build.rs` now declares its real inputs** (`cargo:rerun-if-changed` on the template, the script and the manifest). Editing a generated `.inc`, an example, or a doc no longer re-runs the build script or invalidates the Rust test cache — only a change to the template, `build.rs`, or `Cargo.toml` triggers regeneration. A clean build (releases) still stamps the current `BUILD_*` banner values.
+- **Dropped the `proc-macro-error2` dependency** by updating `mysql_common` 0.37.1 → 0.37.3 (lockfile only), which clears a Rust future-incompatibility warning. The crate sat three levels down under `mysql` and never affected the shipped binary. (#20)
+- **Example and benchmark files are now pure ASCII.** Em-dashes and an arrow in the `.pwn`, `.sql` and `.ini.example` comments became `-` and `->`, so a Pawn file opened or compiled as latin-1 no longer shows garbage. Comments only; every example still compiles. (#35)
+
+### CI / tooling
+
+- CodeQL moved from the default to the advanced setup, so every commit is scanned. (#30)
+- Dependabot updates are grouped into one PR per ecosystem (github-actions, cargo, pip). (#29)
+- Routine dependency and action bumps: `mkdocs-material`, `pymdown-extensions`, `taiki-e/install-action`, `github/codeql-action`, `actions/checkout`, `actions/setup-python`, `actions/cache`, `Swatinem/rust-cache`. (#16–#32)
+
+### Known advisories
+
+Both are informational and neither is resolvable here — each is pinned behind the `mysql` crate's version requirements, and Dependabot will pull the fix once upstream loosens them:
+
+- **RUSTSEC-2025-0134** — `rustls-pemfile` is unmaintained. The code that actually runs is the maintained `rustls-pki-types`; the flagged crate is a thin wrapper over it.
+- **RUSTSEC-2026-0253** — `lru` is unsound in `LruCache::pop` if a key's `Drop` panics. The driver's cache keys are strings/ints, whose `Drop` never panics, so the trigger is unreachable in practice.
 
 ## [1.2.0] — 2026/08/05
 
