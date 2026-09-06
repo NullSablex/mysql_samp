@@ -110,10 +110,8 @@ impl MysqlPlugin {
                         .insert(0, CallbackParam::Int(i32::from(matched)));
                 }
                 PasswordOutcome::Failed(reason) => {
-                    // A constant message chosen by the failure kind. Nothing
-                    // derived from the password flow reaches the log — the
-                    // detail is a string literal, so the secret cannot leak
-                    // here even in principle.
+                    // A string literal per cause — nothing from the password
+                    // flow reaches the log.
                     let detail = match reason {
                         PasswordFailure::Hashing => "Argon2id hashing failed (internal error).",
                         PasswordFailure::InvalidStoredHash => {

@@ -19,20 +19,13 @@ use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, Salt
 
 use crate::query::CallbackInfo;
 
-/// Why a password operation failed.
-///
-/// Deliberately a fixed enum, not a free-form string: the failure travels back
-/// through the same channel the password entered, so anything dynamic here
-/// could — in principle — carry a fragment of the secret into a log. A closed
-/// set of causes, each mapping to a constant message, makes that leak
-/// impossible by construction rather than by careful wording.
+/// Why a password operation failed. A fixed set, not a string, so the failure
+/// channel cannot carry a fragment of the password into a log.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PasswordFailure {
-    /// Argon2id could not hash the input (an internal error; effectively never
-    /// happens at the default parameters).
+    /// Argon2id could not hash the input (internal error).
     Hashing,
-    /// The stored hash handed to verify is not a valid Argon2id PHC string —
-    /// usually a corrupted or wrong value in the database column.
+    /// The stored hash is not a valid Argon2id PHC string.
     InvalidStoredHash,
 }
 
@@ -137,9 +130,7 @@ impl PasswordManager {
             let salt = SaltString::generate(&mut OsRng);
             match Argon2::default().hash_password(password.as_bytes(), &salt) {
                 Ok(hash) => PasswordOutcome::Hash(hash.to_string()),
-                // The underlying error is discarded on purpose: it shares scope
-                // with `password`, and keeping only the cause keeps the secret
-                // out of the failure channel entirely.
+                // Error discarded on purpose: it shares scope with `password`.
                 Err(_) => PasswordOutcome::Failed(PasswordFailure::Hashing),
             }
         })
@@ -162,8 +153,6 @@ impl PasswordManager {
                     .verify_password(password.as_bytes(), &parsed)
                     .is_ok(),
             ),
-            // A malformed hash is a mismatch as far as Pawn is concerned; the
-            // fixed cause is logged so a corrupted column is diagnosable.
             Err(_) => PasswordOutcome::Failed(PasswordFailure::InvalidStoredHash),
         })
     }
@@ -192,18 +181,6 @@ impl PasswordManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_failed_outcome_carries_a_cause_never_a_string() {
-        // The failure channel is a closed enum, so nothing dynamic — least of
-        // all the password — can ride it into a log. This test exists to fail
-        // loudly if someone reintroduces a free-form payload here.
-        let outcome = PasswordOutcome::Failed(PasswordFailure::Hashing);
-        match outcome {
-            PasswordOutcome::Failed(PasswordFailure::Hashing) => {}
-            _ => panic!("unexpected outcome shape"),
-        }
-    }
 
     /// Builds a distinct password at runtime.
     ///
