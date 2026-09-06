@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 Format inspired by [Keep a Changelog](https://keepachangelog.com/). Versioning follows [Semantic Versioning](https://semver.org/). Older entries live under [`changelog/`](changelog/).
 
+## [Unreleased]
+
+### Added
+
+- **open.mp naming style** — a second include, `<mysql_samp_omp>`, exposes every native under open.mp's `Prefix_PascalCase` convention: `MySQL_Connect`, `MySQL_Query`, `Cache_GetRowCount`, `ORM_Create`, `MySQL_TransactionExecute`, `MySQL_HashPassword`, and so on. Each name is a Pawn alias (`native MySQL_Connect(...) = mysql_connect;`) to the real snake_case native, so there is **no runtime cost and no change on the plugin side** — the same `.so`/`.dll` serves both. Include `<mysql_samp>` for the original style or `<mysql_samp_omp>` for the styled one — they are alternatives, not layers, so pick one per script. The styled include is self-contained (it carries its own copy of the `MYSQL_OPT_*` enums and the `OnQueryError` forward) and is generated from the base by `build.rs` on every build, so the two can never drift: a native, enum or constant added to the template appears in both automatically.
+
 ## [1.2.0] — 2026/08/05
 
 Built on top of [rust-samp v3.4.0](https://github.com/NullSablex/rust-samp). No Pawn-visible API was removed or renamed.
