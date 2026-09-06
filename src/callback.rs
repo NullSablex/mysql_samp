@@ -55,9 +55,7 @@ pub fn invoke_callback(amx_list: &[AmxIdent], info: &CallbackInfo) {
                         // `info` flows from a manager that may have handled a
                         // password, and CodeQL cannot tell name from secret, so
                         // keeping the message constant closes that path.
-                        Logger::error(
-                            "Failed to allocate an AMX string for a callback argument.",
-                        );
+                        Logger::error("Failed to allocate an AMX string for a callback argument.");
                         break;
                     }
                 },
