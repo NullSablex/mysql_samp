@@ -6,7 +6,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/). Versioning f
 
 ## [1.3.0] — 2026/09/07
 
-Built on rust-samp v3.4.0 (unchanged since 1.2.0). Additive release: no Pawn native was removed or renamed, so 1.2.0 gamemodes compile unchanged.
+Built on rust-samp v3.5.0. Additive release: no Pawn native was removed or renamed, so 1.2.0 gamemodes compile unchanged.
 
 ### Added
 
@@ -20,6 +20,7 @@ Built on rust-samp v3.4.0 (unchanged since 1.2.0). Additive release: no Pawn nat
 
 ### Changed
 
+- **Upgraded to rust-samp v3.5.0** (from v3.4.0). A feature release on the SDK side, all of it additive: AMX opcode numbering and a computed-goto decoder, call-stack walking, ranged `read_cells` / `read_bytes`, `Amx::hlw()`, `AmxDbg::function_address` — debugger tooling extracted from the PawnPro Debugger. Nothing this plugin calls changed signature or behaviour, so the upgrade is a tag bump and a lockfile update; it is here so the plugin tracks the current SDK rather than lagging a release behind. (#37)
 - **`build.rs` now declares its real inputs** (`cargo:rerun-if-changed` on the template, the script and the manifest). Editing a generated `.inc`, an example, or a doc no longer re-runs the build script or invalidates the Rust test cache — only a change to the template, `build.rs`, or `Cargo.toml` triggers regeneration. A clean build (releases) still stamps the current `BUILD_*` banner values.
 - **Dropped the `proc-macro-error2` dependency** by updating `mysql_common` 0.37.1 → 0.37.3 (lockfile only), which clears a Rust future-incompatibility warning. The crate sat three levels down under `mysql` and never affected the shipped binary. (#20)
 - **Example and benchmark files are now pure ASCII.** Em-dashes and an arrow in the `.pwn`, `.sql` and `.ini.example` comments became `-` and `->`, so a Pawn file opened or compiled as latin-1 no longer shows garbage. Comments only; every example still compiles. (#35)

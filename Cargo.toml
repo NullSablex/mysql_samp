@@ -12,7 +12,7 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 # `compression` gzips rotated log archives. It pulls in flate2, which the mysql
 # crate already brings in via `minimal-rust` — so this costs no new dependency.
-samp = { package = "rust-samp", git = "https://github.com/NullSablex/rust-samp.git", tag = "v3.4.0", features = ["compression"] }
+samp = { package = "rust-samp", git = "https://github.com/NullSablex/rust-samp.git", tag = "v3.5.0", features = ["compression"] }
 # `rustls-tls-ring` is what actually compiles a TLS backend in. Without it the
 # crate's `make_secure` is a `panic!` stub, so MYSQL_OPT_SSL would abort the
 # connection instead of encrypting it. `ring` rather than the default

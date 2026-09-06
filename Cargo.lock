@@ -875,8 +875,8 @@ dependencies = [
 
 [[package]]
 name = "rust-samp"
-version = "3.3.0"
-source = "git+https://github.com/NullSablex/rust-samp.git?tag=v3.4.0#51ba519157e04258ef49515958491b9ba734e2db"
+version = "3.4.0"
+source = "git+https://github.com/NullSablex/rust-samp.git?tag=v3.5.0#df66c770bb7c6f17b333f2dca15f8fff81f98529"
 dependencies = [
  "fern",
  "flate2",
@@ -890,7 +890,7 @@ dependencies = [
 [[package]]
 name = "rust-samp-codegen"
 version = "1.4.0"
-source = "git+https://github.com/NullSablex/rust-samp.git?tag=v3.4.0#51ba519157e04258ef49515958491b9ba734e2db"
+source = "git+https://github.com/NullSablex/rust-samp.git?tag=v3.5.0#df66c770bb7c6f17b333f2dca15f8fff81f98529"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -899,8 +899,8 @@ dependencies = [
 
 [[package]]
 name = "rust-samp-sdk"
-version = "3.3.0"
-source = "git+https://github.com/NullSablex/rust-samp.git?tag=v3.4.0#51ba519157e04258ef49515958491b9ba734e2db"
+version = "3.4.0"
+source = "git+https://github.com/NullSablex/rust-samp.git?tag=v3.5.0#df66c770bb7c6f17b333f2dca15f8fff81f98529"
 dependencies = [
  "bitflags 2.11.0",
 ]

@@ -39,7 +39,7 @@ The same binary loads on SA-MP and on Open Multiplayer — natively as a compone
 - **TLS** — rustls compiled in, with CA pinning, mutual TLS and certificate verification on by default.
 - **Two naming styles** — write the API in its original snake_case (`mysql_connect`) via `<mysql_samp>`, or in open.mp's `Prefix_PascalCase` (`MySQL_Connect`, `Cache_GetRowCount`) via `<mysql_samp_omp>`. Same plugin, aliases only, no runtime cost.
 - **Safe by default** — `sql_mode`-aware escaping, forced UTF-8, protection against SQL injection and memory exhaustion.
-- **Universal binary** — built on top of [rust-samp](https://github.com/NullSablex/rust-samp) v3.4.0; one `.so`/`.dll` runs on SA-MP and on Open Multiplayer (native component or legacy).
+- **Universal binary** — built on top of [rust-samp](https://github.com/NullSablex/rust-samp) v3.5.0; one `.so`/`.dll` runs on SA-MP and on Open Multiplayer (native component or legacy).
 - **Simple deploy** — drop the `.so` or `.dll` in and you are done. No system libraries to install.
 
 ## Installation
