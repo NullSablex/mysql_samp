@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 # A hash-style comment is also skipped by the splitter.
 
-/* A block comment containing a semicolon ; and a quote ' — neither ends
+/* A block comment containing a semicolon ; and a quote ' - neither ends
    a statement, and the scanner walks past both. */
 
 INSERT INTO audit_log (note) VALUES ('schema applied; version 1');

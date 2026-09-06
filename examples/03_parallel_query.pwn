@@ -1,4 +1,4 @@
-// 03_parallel_query.pwn — mysql_pquery: parallel, no ordering guarantee.
+// 03_parallel_query.pwn - mysql_pquery: parallel, no ordering guarantee.
 //
 // Use mysql_pquery when the result does NOT depend on a previously queued
 // query for the same row. Typical fit: independent UPDATEs, write-only logging,

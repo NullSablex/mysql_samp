@@ -1,8 +1,8 @@
-// 02_threaded_query.pwn — non-blocking SELECT with a callback, FIFO-ordered.
+// 02_threaded_query.pwn - non-blocking SELECT with a callback, FIFO-ordered.
 //
 // mysql_query() runs the query on a worker thread and dispatches the result
 // to the named callback. Inside the callback the result is the *active cache*
-// — read it with the cache_* natives. The cache is freed automatically when
+// - read it with the cache_* natives. The cache is freed automatically when
 // the callback returns (use cache_save() to keep it longer).
 //
 // Format spec for the variadic args: each letter maps to one extra param.
