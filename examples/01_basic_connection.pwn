@@ -1,4 +1,4 @@
-// 01_basic_connection.pwn — open a connection at OnGameModeInit, close it on exit.
+// 01_basic_connection.pwn - open a connection at OnGameModeInit, close it on exit.
 //
 // Two variants are shown:
 //   1. The minimal call (default port 3306, no SSL, auto_reconnect on).

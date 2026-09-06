@@ -1,11 +1,11 @@
-// 04_escape_and_format.pwn — building queries safely.
+// 04_escape_and_format.pwn - building queries safely.
 //
 // mysql_format specifiers:
 //   %d  int
 //   %f  float
 //   %s  string, auto-escaped (preferred for user input)
 //   %e  alias of %s, explicit "escape"
-//   %r  string, raw (NO escape) — use only with values YOU control
+//   %r  string, raw (NO escape) - use only with values YOU control
 //   %%  literal percent sign
 //
 // If you absolutely need to escape a string outside mysql_format, use
@@ -60,7 +60,7 @@ PersistPlayer(playerid, const note[])
     mysql_pquery(g_MysqlConn, query);
 }
 
-// Example 3: %r — raw, no escape. Only for trusted, hard-coded values.
+// Example 3: %r - raw, no escape. Only for trusted, hard-coded values.
 TruncateActionLog()
 {
     new query[128];

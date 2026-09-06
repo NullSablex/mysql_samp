@@ -1,12 +1,12 @@
-// 11_config_and_scripts.pwn — credentials in a file, schema in a file, and
+// 11_config_and_scripts.pwn - credentials in a file, schema in a file, and
 // queries that return more than one result set.
 //
 // Three things that usually show up together when a server grows past the
 // "one hardcoded connection" stage:
 //
-//   1. mysql_connect_file  — credentials outside the gamemode source.
-//   2. mysql_query_file    — schema and migrations as .sql files.
-//   3. cache_set_result    — reading a stored procedure that returns several
+//   1. mysql_connect_file  - credentials outside the gamemode source.
+//   2. mysql_query_file    - schema and migrations as .sql files.
+//   3. cache_set_result    - reading a stored procedure that returns several
 //                            result sets.
 //
 // Companion files in this folder: mysql.ini.example and schema.sql.
@@ -19,7 +19,7 @@ new g_MysqlConn = 0;
 // --- 1. Connecting from a config file ----------------------------------------
 //
 // The credentials live in mysql.ini, which your repository does not carry.
-// Connection OPTIONS stay here in code — there is one place to look for
+// Connection OPTIONS stay here in code - there is one place to look for
 // tuning, and the file holds nothing but credentials.
 
 public OnGameModeInit()
@@ -83,7 +83,7 @@ public OnQueryError(errorid, const error[], const callback[], const query[], con
     {
         // The message names the position, e.g. "statement 3 of 4: ...".
         printf("[mysql] schema failed (%d): %s", errorid, error);
-        printf("[mysql] statements before it are already applied — fix and re-run");
+        printf("[mysql] statements before it are already applied - fix and re-run");
     }
     return 1;
 }
@@ -117,7 +117,7 @@ public OnOverviewLoaded(playerid)
     printf("[mysql] procedure returned %d result set(s)", sets);
 
     // Result 0 is selected by default, so a single-set query needs none of
-    // this — existing code keeps working unchanged.
+    // this - existing code keeps working unchanged.
 
     // First set: the account row.
     if (cache_set_result(0) && cache_get_row_count() > 0)

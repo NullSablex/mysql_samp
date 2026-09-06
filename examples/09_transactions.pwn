@@ -1,4 +1,4 @@
-// 09_transactions.pwn — all-or-nothing batches.
+// 09_transactions.pwn - all-or-nothing batches.
 //
 // A transaction guarantees that a group of statements either all apply or none
 // do. The classic case is moving money: without one, a crash or an error
@@ -60,7 +60,7 @@ TransferMoney(playerid, fromId, toId, amount)
     mysql_stmt_bind_int(stmt, amount);   // guard: never go negative
     mysql_transaction_add_stmt(tx, stmt);
 
-    // Credit — reuse the same statement object with a different body
+    // Credit - reuse the same statement object with a different body
     mysql_stmt_close(stmt);
     stmt = mysql_stmt_new(g_MysqlConn,
         "UPDATE accounts SET balance = balance + ? WHERE id = ?");
@@ -125,7 +125,7 @@ public OnDailyReset()
 
 // --- Abandoning a batch -------------------------------------------------------
 //
-// If you build a transaction and then decide not to run it, destroy it —
+// If you build a transaction and then decide not to run it, destroy it -
 // otherwise the handle stays around until the plugin unloads.
 //
 //     new tx = mysql_transaction_new(g_MysqlConn);

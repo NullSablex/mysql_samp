@@ -1,6 +1,6 @@
 # Copy this to mysql.ini and fill in your own values.
 #
-# Keep the real file OUT of version control — that is the whole point of
+# Keep the real file OUT of version control - that is the whole point of
 # mysql_connect_file. Add it to .gitignore:
 #
 #     mysql.ini

@@ -1,4 +1,4 @@
-// 10_password_hashing.pwn — storing player passwords with Argon2id.
+// 10_password_hashing.pwn - storing player passwords with Argon2id.
 //
 // Never store a password with MD5, SHA1, or MySQL's PASSWORD()/SHA2() helpers.
 // Those are fast by design, which is the opposite of what password storage
@@ -14,7 +14,7 @@
 // about 100 characters. Use VARCHAR(255).
 //
 // It ALREADY CONTAINS a random per-hash salt. Do not add a salt column, and do
-// not reuse one — two players with the same password produce different hashes
+// not reuse one - two players with the same password produce different hashes
 // precisely so the table does not reveal that they match.
 //
 // Note the callback signature: the result is always the FIRST argument,

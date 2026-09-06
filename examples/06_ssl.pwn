@@ -1,14 +1,14 @@
-// 06_ssl.pwn — TLS connection. Requires mysql_samp v1.2.0 or later.
+// 06_ssl.pwn - TLS connection. Requires mysql_samp v1.2.0 or later.
 //
 // IMPORTANT: before v1.2.0 these options did NOT encrypt anything. The plugin
 // shipped without a TLS backend, so enabling SSL aborted the connection rather
 // than securing it. If you ran an older build with MYSQL_OPT_SSL on and it
-// appeared to work, that traffic was plaintext — rotate those credentials.
+// appeared to work, that traffic was plaintext - rotate those credentials.
 //
 //   - MYSQL_OPT_SSL = 1 turns on TLS (rustls, compiled into the plugin).
 //   - MYSQL_OPT_SSL_CA points at the root certificate that signed the server.
 //     WITHOUT it, only the webpki root bundle compiled into the plugin is
-//     trusted — NOT your operating system's trust store. A self-signed or
+//     trusted - NOT your operating system's trust store. A self-signed or
 //     internal-CA server will fail to connect until you set this.
 //   - MYSQL_OPT_SSL_CERT + MYSQL_OPT_SSL_KEY provide a client certificate when
 //     the server requires mutual TLS.
@@ -48,7 +48,7 @@ public OnGameModeInit()
     // --- DANGEROUS: disable verification ------------------------------------
     // Accepts ANY certificate and skips the hostname check. The traffic stays
     // encrypted, but anyone able to intercept the connection can present their
-    // own certificate and read or rewrite every query — which is exactly what
+    // own certificate and read or rewrite every query - which is exactly what
     // TLS exists to prevent. Set MYSQL_OPT_SSL_CA above instead.
     // mysql_options_set_int(opts, MYSQL_OPT_SSL_VERIFY_CERT, 0);
 

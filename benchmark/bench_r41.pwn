@@ -88,7 +88,7 @@ public BenchStart()
     {
         new errMsg[256];
         mysql_error(errMsg, sizeof(errMsg), gMysql);
-        printf("[Bench] ERRO: conexao falhou — %s", errMsg);
+        printf("[Bench] ERRO: conexao falhou - %s", errMsg);
         print ("[Bench] Verifique host, usuario, senha e nome do banco.");
         return;
     }
@@ -98,7 +98,7 @@ public BenchStart()
 }
 
 // ============================================================
-// Etapa 1: SELECT sequencial (mysql_tquery — FIFO)
+// Etapa 1: SELECT sequencial (mysql_tquery - FIFO)
 // Equivalente a mysql_query do mysql_samp.
 // ============================================================
 
@@ -107,7 +107,7 @@ stock BenchSelectFIFO()
     gDone  = 0;
     gStart = GetTickCount();
 
-    printf("[Bench] Etapa 1/%d — SELECT FIFO (mysql_tquery) x%d", 4, ROUNDS_SELECT);
+    printf("[Bench] Etapa 1/%d - SELECT FIFO (mysql_tquery) x%d", 4, ROUNDS_SELECT);
 
     for (new i = 1; i <= ROUNDS_SELECT; i++)
     {
@@ -144,7 +144,7 @@ stock BenchSelectParallel()
     gDone  = 0;
     gStart = GetTickCount();
 
-    printf("[Bench] Etapa 2/%d — SELECT paralelo (mysql_pquery) x%d", 4, ROUNDS_PSELECT);
+    printf("[Bench] Etapa 2/%d - SELECT paralelo (mysql_pquery) x%d", 4, ROUNDS_PSELECT);
 
     for (new i = 1; i <= ROUNDS_PSELECT; i++)
     {
@@ -181,7 +181,7 @@ stock BenchInsert()
     gDone  = 0;
     gStart = GetTickCount();
 
-    printf("[Bench] Etapa 3/%d — INSERT paralelo (mysql_pquery) x%d", 4, ROUNDS_INSERT);
+    printf("[Bench] Etapa 3/%d - INSERT paralelo (mysql_pquery) x%d", 4, ROUNDS_INSERT);
 
     new query[192];
     for (new i = 0; i < ROUNDS_INSERT; i++)
@@ -213,13 +213,13 @@ public OnBenchInsert(round)
 
 // ============================================================
 // Etapa 4: mysql_format com escape
-// No R41-4, %s NAO escapa — usamos %e para escapar,
+// No R41-4, %s NAO escapa - usamos %e para escapar,
 // que e o equivalente ao %s do mysql_samp.
 // ============================================================
 
 stock BenchFormat()
 {
-    printf("[Bench] Etapa 4/%d — mysql_format com escape x%d (sincrono)", 4, ROUNDS_FORMAT);
+    printf("[Bench] Etapa 4/%d - mysql_format com escape x%d (sincrono)", 4, ROUNDS_FORMAT);
 
     new query[256];
     new dangerous[] = "'; DROP TABLE bench_test; -- O'Brien & Co.";

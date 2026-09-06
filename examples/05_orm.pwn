@@ -1,12 +1,12 @@
-// 05_orm.pwn — minimal ORM: bind Pawn vars to columns, save / load by key.
+// 05_orm.pwn - minimal ORM: bind Pawn vars to columns, save / load by key.
 //
 // Workflow:
-//   1. orm_create(table, conn) — returns an orm_id tied to that table.
-//   2. orm_addvar_* — bind a Pawn variable to a column. Reads write into the
+//   1. orm_create(table, conn) - returns an orm_id tied to that table.
+//   2. orm_addvar_* - bind a Pawn variable to a column. Reads write into the
 //      var; writes pull the var's current value.
-//   3. orm_setkey(orm_id, "id") — declare the primary key. orm_save() decides
+//   3. orm_setkey(orm_id, "id") - declare the primary key. orm_save() decides
 //      INSERT vs UPDATE based on whether the key var is zero/empty.
-//   4. orm_select / orm_save / orm_delete / orm_insert / orm_update — async,
+//   4. orm_select / orm_save / orm_delete / orm_insert / orm_update - async,
 //      each with an optional callback.
 //
 // Schema assumed for the example:
@@ -72,7 +72,7 @@ public  OnPlayerLookup(playerid)
 {
     if (cache_get_row_count() == 0)
     {
-        // New player: orm_save with id=0 → INSERT.
+        // New player: orm_save with id=0 -> INSERT.
         orm_save(gPlayerOrm[playerid], "OnPlayerInserted", "d", playerid);
         return 1;
     }
@@ -107,7 +107,7 @@ public OnPlayerDisconnect(playerid, reason)
 
     if (gPlayerOrm[playerid] != 0 && gPlayerDbId[playerid] != 0)
     {
-        // Key is set → orm_save performs an UPDATE.
+        // Key is set -> orm_save performs an UPDATE.
         orm_save(gPlayerOrm[playerid]);
         orm_destroy(gPlayerOrm[playerid]);
         gPlayerOrm[playerid] = 0;

@@ -1,4 +1,4 @@
-// 08_prepared_statements.pwn — the safe way to put player input in a query.
+// 08_prepared_statements.pwn - the safe way to put player input in a query.
 //
 // mysql_format escapes values into the SQL text. That works, but its
 // correctness depends on matching the server's sql_mode: under
@@ -10,7 +10,7 @@
 // SQL text for a value to break out of and no escaping involved at all.
 //
 // Bonus property: because the values never enter the query text, they also
-// never appear in logs/mysql.log or in cache_get_query_string() — only the
+// never appear in logs/mysql.log or in cache_get_query_string() - only the
 // template with its ? placeholders does.
 
 #include <a_samp>
@@ -51,7 +51,7 @@ FindPlayersByName(playerid, const name[], minScore)
     // Non-blocking and FIFO-ordered, exactly like mysql_query.
     mysql_stmt_execute(stmt, "OnPlayersFound", "d", playerid);
 
-    // The values were copied at execute time, so closing here is safe — the
+    // The values were copied at execute time, so closing here is safe - the
     // query is already on its way.
     mysql_stmt_close(stmt);
     return 1;
@@ -118,7 +118,7 @@ ClearPlayerClan(playerid, dbId)
 //
 //     mysql_stmt_new(conn, "SELECT * FROM ? ORDER BY ? ?");
 //
-// For those, build the SQL from values you control — a whitelist, never raw
+// For those, build the SQL from values you control - a whitelist, never raw
 // player input:
 //
 //     new const sortColumns[][] = { "score", "name", "created_at" };
