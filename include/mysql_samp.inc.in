@@ -179,7 +179,7 @@ native bool:orm_setkey(orm_id, const column_name[]);
 
 // Password hashing (Argon2id)
 //
-// Both natives run on a worker thread — Argon2id is deliberately slow, so
+// Both natives run on a worker thread - Argon2id is deliberately slow, so
 // hashing on the server thread would stall it. The result is delivered as the
 // FIRST argument of the callback, followed by the extras described by format.
 //
@@ -191,7 +191,7 @@ native bool:orm_setkey(orm_id, const column_name[]);
 //
 // The hash is a PHC string (`$argon2id$v=19$m=...`) around 100 characters long;
 // size the storage column and any Pawn buffer accordingly (VARCHAR(255) is the
-// usual choice). It already embeds its own random salt — do not add one.
+// usual choice). It already embeds its own random salt - do not add one.
 native bool:mysql_hash_password(const password[], const callback[], const format[] = "", {Float,_}:...);
 native bool:mysql_verify_password(const password[], const hash[], const callback[], const format[] = "", {Float,_}:...);
 
@@ -200,7 +200,7 @@ native bool:mysql_verify_password(const password[], const hash[], const callback
 // Steps are collected first and then executed as one unit on a single
 // connection: START TRANSACTION, every step, COMMIT. Any failing step rolls the
 // whole batch back and fires OnQueryError. There is no interactive
-// begin/commit API on purpose — holding a pooled connection between ticks would
+// begin/commit API on purpose - holding a pooled connection between ticks would
 // leak it whenever a gamemode never reached the commit.
 //
 //   new tx = mysql_transaction_new(connId);
