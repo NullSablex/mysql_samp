@@ -16,7 +16,7 @@
 #define _mysql_samp_omp_included
 
 
-#define MYSQL_SAMP_VERSION "1.2.0"
+#define MYSQL_SAMP_VERSION "1.3.0"
 
 // Connection options
 enum {
