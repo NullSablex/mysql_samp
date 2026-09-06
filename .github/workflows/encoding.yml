@@ -4,6 +4,12 @@
 # UTF-8, so a stray accented character or typographic dash reaches the server as
 # mojibake instead of failing loudly at compile time. This job catches that
 # before it is merged.
+#
+# It covers both includes AND everything under `examples/` and `benchmark/`.
+# `tests/inc_encoding.rs` deliberately covers only the includes, which are build
+# output of the crate: editing an example is not a Rust change and should not
+# hinge on the Rust suite. This job is the superset, and it is cheap (~6s, no
+# toolchain), so it has no path filter.
 name: Encoding
 
 on:
