@@ -19,14 +19,24 @@ use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, Salt
 
 use crate::query::CallbackInfo;
 
+/// Why a password operation failed. A fixed set, not a string, so the failure
+/// channel cannot carry a fragment of the password into a log.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PasswordFailure {
+    /// Argon2id could not hash the input (internal error).
+    Hashing,
+    /// The stored hash is not a valid Argon2id PHC string.
+    InvalidStoredHash,
+}
+
 /// What a finished worker produced.
 pub enum PasswordOutcome {
     /// PHC string (`$argon2id$v=19$m=...`), ready to be stored as-is.
     Hash(String),
     /// Whether the password matched the supplied hash.
     Verify(bool),
-    /// The operation failed; the message is for the log, never for Pawn.
-    Failed(String),
+    /// The operation failed. Carries only a fixed cause, never the password.
+    Failed(PasswordFailure),
 }
 
 pub struct PasswordResult {
@@ -120,7 +130,8 @@ impl PasswordManager {
             let salt = SaltString::generate(&mut OsRng);
             match Argon2::default().hash_password(password.as_bytes(), &salt) {
                 Ok(hash) => PasswordOutcome::Hash(hash.to_string()),
-                Err(e) => PasswordOutcome::Failed(format!("Argon2id hashing failed: {e}")),
+                // Error discarded on purpose: it shares scope with `password`.
+                Err(_) => PasswordOutcome::Failed(PasswordFailure::Hashing),
             }
         })
     }
@@ -142,11 +153,7 @@ impl PasswordManager {
                     .verify_password(password.as_bytes(), &parsed)
                     .is_ok(),
             ),
-            // A malformed hash is a mismatch as far as Pawn is concerned; the
-            // reason goes to the log so a corrupted column is diagnosable.
-            Err(e) => {
-                PasswordOutcome::Failed(format!("Stored hash is not a valid PHC string: {e}"))
-            }
+            Err(_) => PasswordOutcome::Failed(PasswordFailure::InvalidStoredHash),
         })
     }
 

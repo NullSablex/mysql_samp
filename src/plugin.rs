@@ -9,7 +9,7 @@ use crate::error::{ErrorState, MysqlError};
 use crate::logger::Logger;
 use crate::options::OptionsManager;
 use crate::orm::OrmManager;
-use crate::password::{PasswordManager, PasswordOutcome};
+use crate::password::{PasswordFailure, PasswordManager, PasswordOutcome};
 use crate::query::{CallbackParam, QueryManager};
 use crate::stmt::StmtManager;
 use crate::transaction::TransactionManager;
@@ -109,10 +109,18 @@ impl MysqlPlugin {
                     info.params
                         .insert(0, CallbackParam::Int(i32::from(matched)));
                 }
-                PasswordOutcome::Failed(detail) => {
+                PasswordOutcome::Failed(reason) => {
+                    // A string literal per cause — nothing from the password
+                    // flow reaches the log.
+                    let detail = match reason {
+                        PasswordFailure::Hashing => "Argon2id hashing failed (internal error).",
+                        PasswordFailure::InvalidStoredHash => {
+                            "The stored hash is not a valid Argon2id PHC string."
+                        }
+                    };
                     Logger::error_detail(
                         "Password operation failed. See logs/mysql.log for details.",
-                        &detail,
+                        detail,
                     );
                     // Report the failure as "did not match" / empty hash rather
                     // than dropping the callback: a gamemode waiting on it would
