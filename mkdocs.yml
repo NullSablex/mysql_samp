@@ -1,7 +1,7 @@
 site_name: mysql_samp
 site_description: MySQL plugin for SA-MP and Open Multiplayer, written in Rust
 site_author: NullSablex
-site_url: https://mysql-samp.nullsablex.com/
+site_url: https://nullsablex.github.io/mysql_samp/
 
 repo_name: NullSablex/mysql_samp
 repo_url: https://github.com/NullSablex/mysql_samp

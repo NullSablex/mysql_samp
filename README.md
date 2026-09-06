@@ -39,7 +39,7 @@ The same binary loads on SA-MP and on Open Multiplayer — natively as a compone
 - **TLS** — rustls compiled in, with CA pinning, mutual TLS and certificate verification on by default.
 - **Two naming styles** — write the API in its original snake_case (`mysql_connect`) via `<mysql_samp>`, or in open.mp's `Prefix_PascalCase` (`MySQL_Connect`, `Cache_GetRowCount`) via `<mysql_samp_omp>`. Same plugin, aliases only, no runtime cost.
 - **Safe by default** — `sql_mode`-aware escaping, forced UTF-8, protection against SQL injection and memory exhaustion.
-- **Universal binary** — built on top of [rust-samp](https://github.com/NullSablex/rust-samp) v3.4.0; one `.so`/`.dll` runs on SA-MP and on Open Multiplayer (native component or legacy).
+- **Universal binary** — built on top of [rust-samp](https://github.com/NullSablex/rust-samp) v3.5.0; one `.so`/`.dll` runs on SA-MP and on Open Multiplayer (native component or legacy).
 - **Simple deploy** — drop the `.so` or `.dll` in and you are done. No system libraries to install.
 
 ## Installation
@@ -50,9 +50,11 @@ The same binary loads on SA-MP and on Open Multiplayer — natively as a compone
    - `mysql_samp.inc` (Pawn include, shared between SA-MP and Open Multiplayer)
    - `mysql_samp_omp.inc` (optional — the same API in open.mp's `Prefix_PascalCase` naming style)
 2. Place the binary in the server's `plugins/` directory.
-3. Copy `mysql_samp.inc` to your compiler's include folder:
+3. Copy the include(s) you want to your compiler's include folder:
    - **Windows:** `pawno/include/` or `qawno/include/`
    - **Linux:** `include/` (at the server root)
+
+   Both files can sit side by side — they are alternatives, so pick one per script, never both in the same one.
 4. Register the plugin:
    - **SA-MP** — add to `server.cfg`:
      ```

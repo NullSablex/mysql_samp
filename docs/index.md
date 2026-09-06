@@ -13,6 +13,8 @@ MySQL plugin for SA-MP and Open Multiplayer, written entirely in Rust. Non-block
 
 The same `.so` / `.dll` runs on SA-MP and on Open Multiplayer — natively as a component (recommended) or via legacy mode. See [Installation](installation.md) for both registration paths.
 
+The API ships under two names, as **alternative** includes over the same binary: `<mysql_samp>` for the plugin's own snake_case (`mysql_connect`) and `<mysql_samp_omp>` for open.mp's `Prefix_PascalCase` (`MySQL_Connect`). The styled names are plain Pawn aliases, so there is no runtime cost — pick one per script. The examples throughout these docs use the snake_case style.
+
 ## Where to start
 
 | Goal | Path |
@@ -83,7 +85,7 @@ public OnGameModeExit()
 
 ## Plugin facts
 
-- **rust-samp**: built on top of [rust-samp v3.4.0](https://github.com/NullSablex/rust-samp).
+- **rust-samp**: built on top of [rust-samp v3.5.0](https://github.com/NullSablex/rust-samp).
 - **MySQL crate**: `mysql` 28.0 with `default-rust` + `rustls-tls-ring`. The MySQL protocol itself is pure Rust; the TLS backend (`ring`) carries a C/assembly crypto core that is compiled **into** the binary, so the shipped artifact still needs no `libmysqlclient` and no system OpenSSL.
 - **TLS**: rustls is compiled into the binary (`rustls-tls-ring`); `MYSQL_OPT_SSL` enables TLS, `MYSQL_OPT_SSL_CA` sets the root certificate, and `MYSQL_OPT_SSL_CERT`/`_KEY` do mutual TLS. Without `MYSQL_OPT_SSL_CA` only the **bundled webpki roots** are trusted — not the OS trust store — so a self-signed or internal-CA server needs it. See [Options](options.md#ssl).
 - **Injection safety**: prefer [prepared statements](queries.md) (`mysql_stmt_*`) over `mysql_format` for player input — values are bound server-side and never enter the SQL text.

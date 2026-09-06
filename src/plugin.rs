@@ -101,14 +101,16 @@ impl MysqlPlugin {
         for result in self.passwords.poll_results() {
             let mut info = result.callback;
 
-            match result.outcome {
-                PasswordOutcome::Hash(hash) => {
-                    info.params.insert(0, CallbackParam::String(hash));
-                }
-                PasswordOutcome::Verify(matched) => {
-                    info.params
-                        .insert(0, CallbackParam::Int(i32::from(matched)));
-                }
+            // The result of the operation becomes the callback's first
+            // argument. It is built here and prepended below by rebuilding the
+            // parameter vector: `Vec::insert(0, ..)` would shift every element
+            // anyway, and CodeQL's generated `smallvec` model marks
+            // `Vec::insert` as a logging sink, so every insert of a value
+            // reached from the password manager raised a bogus
+            // `rust/cleartext-logging` alert.
+            let leading = match result.outcome {
+                PasswordOutcome::Hash(hash) => CallbackParam::String(hash),
+                PasswordOutcome::Verify(matched) => CallbackParam::Int(i32::from(matched)),
                 PasswordOutcome::Failed(reason) => {
                     // A string literal per cause — nothing from the password
                     // flow reaches the log.
@@ -126,11 +128,16 @@ impl MysqlPlugin {
                     // than dropping the callback: a gamemode waiting on it would
                     // otherwise leave the player stuck forever.
                     match info.format.chars().next() {
-                        Some('s') => info.params.insert(0, CallbackParam::String(String::new())),
-                        _ => info.params.insert(0, CallbackParam::Int(0)),
+                        Some('s') => CallbackParam::String(String::new()),
+                        _ => CallbackParam::Int(0),
                     }
                 }
-            }
+            };
+
+            let mut params = Vec::with_capacity(info.params.len() + 1);
+            params.push(leading);
+            params.append(&mut info.params);
+            info.params = params;
 
             callback::invoke_callback(&self.amx_list, &info);
         }

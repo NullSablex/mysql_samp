@@ -27,13 +27,13 @@ Runnable Pawn snippets showing how to use the plugin on **SA-MP** and **Open Mul
 
 ## Compiling
 
-The examples assume the include path is set up so that `<mysql_samp>` resolves to [`../include/mysql_samp.inc`](../include/mysql_samp.inc).
+The examples assume the include path is set up so that `<mysql_samp>` resolves to [`../include/mysql_samp.inc`](../include/mysql_samp.inc). They all use the snake_case naming; to read them in open.mp's `Prefix_PascalCase` style, swap the include for [`<mysql_samp_omp>`](../include/mysql_samp_omp.inc) and the native names accordingly (`mysql_connect` -> `MySQL_Connect`). The two includes are alternatives - never both in one script.
 
 ```bash
 pawncc -i../include 01_basic_connection.pwn
 ```
 
-Or copy `mysql_samp.inc` into your `pawno/include/` (SA-MP) or `qawno/include/` (open.mp) folder and compile from inside the gamemode tree.
+Or copy `mysql_samp.inc` (or `mysql_samp_omp.inc`) into your `pawno/include/` (SA-MP) or `qawno/include/` (open.mp) folder and compile from inside the gamemode tree.
 
 ## Installing the plugin
 

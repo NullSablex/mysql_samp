@@ -16,6 +16,7 @@ Grab the latest release from [Releases](https://github.com/NullSablex/mysql_samp
 | `mysql_samp.so` | Linux i686 (`i686-unknown-linux-gnu`) |
 | `mysql_samp.dll` | Windows i686 (`i686-pc-windows-msvc`) |
 | `mysql_samp.inc` | Pawn include — shared between SA-MP and Open Multiplayer |
+| `mysql_samp_omp.inc` | The same API under open.mp's `Prefix_PascalCase` naming |
 
 The same `.so` / `.dll` runs on SA-MP and on Open Multiplayer.
 
@@ -41,19 +42,36 @@ The same binary still ships the SA-MP plugin ABI (`Supports`, `Load`, `Unload`, 
 
 ## Place the include
 
+There are two includes, and they are **alternatives, not layers**: both declare the same 70 natives against the same binary, only under different names. Pick one per script.
+
+| Include | Naming style | Example |
+|---|---|---|
+| `mysql_samp.inc` | snake_case, the plugin's own | `mysql_connect`, `cache_get_row_count`, `orm_create` |
+| `mysql_samp_omp.inc` | `Prefix_PascalCase`, open.mp's convention | `MySQL_Connect`, `Cache_GetRowCount`, `ORM_Create` |
+
+The styled names are plain Pawn aliases (`native MySQL_Connect(...) = mysql_connect;`), so there is no runtime cost and nothing changes on the plugin side. `mysql_samp_omp.inc` is generated from `mysql_samp.inc` at build time, so the two can never drift.
+
+Copy whichever you use (or both — they can coexist in the include folder) to:
+
 | Compiler | Path |
 |---|---|
-| Pawno (Windows) | `pawno/include/mysql_samp.inc` |
-| Qawno (open.mp) | `qawno/include/mysql_samp.inc` |
-| Linux | `include/mysql_samp.inc` (at the server root) |
+| Pawno (Windows) | `pawno/include/` |
+| Qawno (open.mp) | `qawno/include/` |
+| Linux | `include/` (at the server root) |
 
-Then in your gamemode:
+Then in your gamemode, one of:
 
 ```pawn
-#include <mysql_samp>
+#include <mysql_samp>      // mysql_connect(...)
 ```
 
-The include exposes the plugin version as a Pawn constant:
+```pawn
+#include <mysql_samp_omp>  // MySQL_Connect(...)
+```
+
+> Including both in the same script is a compile error: every native would be declared twice.
+
+Either include exposes the plugin version as a Pawn constant:
 
 ```pawn
 printf("mysql_samp version: %s", MYSQL_SAMP_VERSION);
@@ -68,7 +86,7 @@ server/
 ├── gamemodes/
 │   └── your_gm.amx
 ├── include/
-│   └── mysql_samp.inc
+│   └── mysql_samp.inc     <- or mysql_samp_omp.inc
 ├── plugins/
 │   └── mysql_samp.so
 ├── logs/
@@ -83,7 +101,7 @@ server/
 ├── gamemodes/
 │   └── your_gm.amx
 ├── pawno/include/
-│   └── mysql_samp.inc
+│   └── mysql_samp.inc     <- or mysql_samp_omp.inc
 ├── plugins/
 │   └── mysql_samp.dll
 ├── logs/
