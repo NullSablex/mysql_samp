@@ -5,6 +5,14 @@ on:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
+  # Daily, for the security audit only (the other jobs opt out below). A new
+  # advisory against a dependency we already ship is not something a pull
+  # request introduces, so waiting for one to be opened is the wrong trigger:
+  # it turns an unrelated PR red instead of telling us. On a schedule,
+  # rustsec/audit-check opens an issue instead.
+  schedule:
+    - cron: '41 5 * * *'
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -16,6 +24,8 @@ permissions:
 jobs:
   build:
     name: Build, test, clippy
+    # The daily run exists for the audit; there is no new code to build.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -49,6 +59,8 @@ jobs:
 
   fmt:
     name: Rustfmt
+    # The daily run exists for the audit; there is no new code to build.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -66,8 +78,12 @@ jobs:
   audit:
     name: Security audit
     runs-on: ubuntu-latest
-    # rustsec/audit-check opens issues for new advisories and posts
-    # review comments on PRs that introduce vulnerable dependencies.
+    # rustsec/audit-check opens issues for new advisories and posts review
+    # comments on PRs that introduce vulnerable dependencies. This is the only
+    # job that also runs on the daily schedule: an advisory published against a
+    # crate already in Cargo.lock arrives on the RustSec database's clock, not
+    # on ours, and should reach us as an issue rather than as a red check on
+    # whatever pull request happened to be open at the time.
     permissions:
       contents: read
       issues: write
@@ -83,6 +99,8 @@ jobs:
 
   coverage:
     name: Coverage (llvm-cov)
+    # The daily run exists for the audit; there is no new code to build.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     permissions:
       contents: read
