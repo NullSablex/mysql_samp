@@ -10,7 +10,7 @@ native mysql_connect(const host[], const user[], const password[], const databas
 
 | Parameter | Type | Description |
 |---|---|---|
-| `host` | string | IPv4/hostname **or** absolute path to a Unix socket (path starts with `/`) |
+| `host` | string | Hostname, IPv4, IPv6 in brackets (`[::1]`), **or** absolute path to a Unix socket (path starts with `/`) |
 | `user` | string | MySQL user |
 | `password` | string | MySQL password (may be empty) |
 | `database` | string | Default schema for the connection |
@@ -37,6 +37,30 @@ public OnGameModeInit()
     return 1;
 }
 ```
+
+### IPv6
+
+IPv6 works, and the address goes in `host` like any other. **Put it in square brackets:**
+
+```pawn
+g_mysql = mysql_connect("[::1]", "root", "password", "samp_db");
+g_mysql = mysql_connect("[2001:db8::3306:1]", "root", "password", "samp_db");
+```
+
+The brackets are not decoration. With them, the address is parsed and validated as an IPv6 address; without them it is taken as a *host name* and handed to the resolver, which happens to accept a literal — so it usually connects, but nothing checks the address and a typo surfaces as a name-resolution failure instead of a clear error.
+
+The port is never part of `host`. It stays in `MYSQL_OPT_PORT`, exactly as with IPv4, so there is no `[::1]:3306` form:
+
+```pawn
+new opt = mysql_options_new();
+mysql_options_set_int(opt, MYSQL_OPT_PORT, 3307);
+g_mysql = mysql_connect("[::1]", "root", "password", "samp_db", opt);
+```
+
+Two things to know:
+
+- **The server has to be listening on IPv6.** MySQL binds IPv4 only by default; it needs `bind-address = ::` (or a specific IPv6 address) in the server configuration. A refused connection to `[::1]` is usually this, not the plugin.
+- **TLS to an IP literal needs a certificate issued for that IP** (an `iPAddress` entry in the certificate's SAN), which is uncommon — certificates are normally issued for names. If you use `MYSQL_OPT_SSL` with certificate verification on, connect by hostname, or expect verification to fail.
 
 ### Unix socket
 

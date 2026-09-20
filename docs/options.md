@@ -105,7 +105,7 @@ Setting only one of the two logs a warning and the client certificate is ignored
 
 #### TLS needs a TCP host
 
-`MYSQL_OPT_SSL` has no effect when the host is a unix socket (a path starting with `/`) — there is nothing to encrypt on a local socket. Use a TCP host such as `127.0.0.1` or a hostname.
+`MYSQL_OPT_SSL` has no effect when the host is a unix socket (a path starting with `/`) — there is nothing to encrypt on a local socket. Use a TCP host: a hostname, an IPv4 address, or an IPv6 address in brackets (`[::1]`).
 
 #### Disabling verification
 
