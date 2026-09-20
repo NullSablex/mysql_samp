@@ -5,13 +5,21 @@ on:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
-  # Daily, for the security audit only (the other jobs opt out below). A new
-  # advisory against a dependency we already ship is not something a pull
-  # request introduces, so waiting for one to be opened is the wrong trigger:
-  # it turns an unrelated PR red instead of telling us. On a schedule,
-  # rustsec/audit-check opens an issue instead.
+  # Weekly, for the security audit only (the other jobs opt out below).
+  #
+  # The first line of defence is Dependabot: it now tracks transitive crates
+  # too, so a patched version lands as an ordinary lockfile pull request and
+  # gets audited on the way in. This job is the second line, for what that
+  # misses - an advisory RustSec publishes and the GitHub Advisory Database
+  # does not carry, which is exactly what RUSTSEC-2026-0285 was, or one with
+  # no fixed version to bump to. Waiting for someone to open a pull request
+  # is the wrong trigger for that: it turns an unrelated PR red instead of
+  # telling us. On a schedule, rustsec/audit-check opens an issue instead.
+  #
+  # Mondays, a few hours before Dependabot's weekly run, so the two do not
+  # report the same thing twice.
   schedule:
-    - cron: '41 5 * * *'
+    - cron: '41 5 * * 1'
   workflow_dispatch:
 
 env:

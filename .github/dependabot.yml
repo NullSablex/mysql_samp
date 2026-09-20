@@ -21,13 +21,35 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(deps)"
+    # Transitive dependencies too, not just what Cargo.toml declares.
+    #
+    # By default Dependabot only tracks the manifest, and almost nothing we
+    # ship is in it: `rustls` arrives through `mysql`, and so do most of the
+    # 183 crates in the lockfile. That default is what let RUSTSEC-2026-0285
+    # sit in `Cargo.lock` until `cargo audit` failed an unrelated PR - the
+    # fixed `rustls` 0.23.45 had been out for days and nothing was watching.
+    #
+    # With `all`, the weekly run refreshes transitive crates as well, so a
+    # patched version arrives as an ordinary lockfile bump and goes through
+    # `cargo audit` in CI like any other change. Supported for cargo:
+    # https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference
+    allow:
+      - dependency-type: "all"
     groups:
+      # One pull request per week for the lot, rather than one per crate.
       cargo:
         patterns:
           - "*"
         update-types:
           - "minor"
           - "patch"
+      # Security updates are not grouped by the block above: a group applies
+      # to version updates unless it says otherwise. Without this, several
+      # advisories at once would mean several pull requests.
+      cargo-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
   - package-ecosystem: "pip"
     directory: "/docs"
     schedule:
