@@ -110,7 +110,8 @@ native bool:MySQL_OptionsSetStr(handle, option, const value[]) = mysql_options_s
 /**
  * Opens a connection pool.
  *
- * @param host      hostname/IP, or a path starting with / for a unix socket
+ * @param host      hostname, IPv4, IPv6 in brackets ([::1]), or a path
+ *                  starting with / for a unix socket
  * @param user      MySQL user
  * @param password  MySQL password
  * @param database  default schema

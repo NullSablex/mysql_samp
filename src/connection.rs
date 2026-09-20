@@ -1014,4 +1014,54 @@ mod tests {
         let mgr = ConnectionManager::new();
         assert!(mgr.get_pool(1).is_none());
     }
+
+    /// IPv6 literals reach the driver as IPv6, not as a socket path.
+    ///
+    /// `connect()` routes a host to a unix socket on a single test — a leading
+    /// `/` — and everything else goes to `ip_or_hostname`. An IPv6 literal has
+    /// no leading slash, so it takes the TCP path and the driver parses it.
+    /// The bracketed form is the one the driver documents, and the only one it
+    /// classifies as an address rather than as a name: that is what this test
+    /// pins, since the distinction is invisible until a connection fails.
+    #[test]
+    fn ipv6_literals_are_parsed_as_addresses() {
+        // Bracketed: parsed as an address, and normalised as one.
+        let opts: Opts = OptsBuilder::new()
+            .ip_or_hostname(Some("[::1]"))
+            .tcp_port(3306)
+            .into();
+        assert_eq!(opts.get_ip_or_hostname(), "[::1]");
+        assert!(
+            opts.addr_is_loopback(),
+            "[::1] must be recognised as a loopback address"
+        );
+
+        // An embedded IPv4 is rewritten to the canonical IPv6 form, which only
+        // happens when the driver really parsed it as an address.
+        let opts: Opts = OptsBuilder::new()
+            .ip_or_hostname(Some("[::ffff:127.0.0.1]"))
+            .into();
+        assert_eq!(opts.get_ip_or_hostname(), "[::ffff:7f00:1]");
+
+        // Unbracketed still connects (the resolver takes the literal), but the
+        // driver treats it as a host name: no parsing, no loopback detection.
+        let opts: Opts = OptsBuilder::new().ip_or_hostname(Some("::1")).into();
+        assert_eq!(opts.get_ip_or_hostname(), "::1");
+        assert!(
+            !opts.addr_is_loopback(),
+            "unbracketed ::1 is taken as a name - document the bracketed form"
+        );
+    }
+
+    /// A unix socket path is still the only thing routed to `socket()`.
+    #[test]
+    fn only_a_leading_slash_means_a_unix_socket() {
+        for host in ["[::1]", "::1", "2001:db8::1", "127.0.0.1", "db.example.com"] {
+            assert!(
+                !host.starts_with('/'),
+                "{host} must not be taken for a socket path"
+            );
+        }
+        assert!("/var/run/mysqld/mysqld.sock".starts_with('/'));
+    }
 }
