@@ -1,69 +1,84 @@
-# Security policy
-
-## Supported versions
-
-Only the latest release line receives security fixes. The version currently
-shipped is the one in [`Cargo.toml`](Cargo.toml); releases are listed on the
-[releases page](https://github.com/NullSablex/mysql_samp/releases).
-
-| Version | Supported |
-|---|---|
-| 1.x (latest release) | Yes |
-| Older 1.x releases | No — upgrade to the latest |
-| Pre-1.0 | No |
+# Security Policy — mysql_samp
 
 ## Reporting a vulnerability
 
-**Report privately, not as a public issue.** Use GitHub's private reporting:
+Found a security vulnerability? Please do not open a public issue.
 
-- **[Open a private security advisory](https://github.com/NullSablex/mysql_samp/security/advisories/new)**
-  — the preferred route. It is visible only to you and the maintainer.
-- If that page is unavailable to you, open a normal
-  [issue](https://github.com/NullSablex/mysql_samp/issues) saying only that you
-  have a security report and asking for a private channel. Do not put the
-  details in it.
+**Contact:** open a private [Security Advisory](https://github.com/NullSablex/mysql_samp/security/advisories/new)
+on GitHub, or e-mail the maintainer directly.
 
-Useful things to include, as far as you have them:
+Expected response within **7 business days**.
 
-- the plugin version (`MYSQL_SAMP_VERSION`, or the release you downloaded) and
-  the server it runs on (SA-MP or open.mp, native or legacy);
-- the MySQL or MariaDB version;
-- what an attacker can do with it — reading other players' data, crashing the
-  server, running SQL they should not be able to run;
-- the smallest Pawn snippet or SQL that shows the problem.
+Useful things to include, as far as you have them: the plugin version
+(`MYSQL_SAMP_VERSION`), the server (SA-MP or open.mp, native or legacy), the
+MySQL or MariaDB version, what an attacker gains, and the smallest Pawn snippet
+or SQL that shows it. A proof of concept helps, but do not hold a report back
+for lack of one.
 
-A proof of concept helps, but do not hold a report back for lack of one.
-
-## What to expect
-
-This is an independent project maintained by one person, so the honest answer
-is best effort rather than a contractual window: reports are acknowledged as
-soon as they are seen, and a fix is prioritised over everything else once the
-issue is confirmed. You will be told what was concluded either way, including
-when the conclusion is that it is not a vulnerability.
-
-Fixes ship in a normal release, with the advisory published once the fix is
-available. Credit goes to the reporter unless you ask otherwise.
+---
 
 ## Scope
 
-In scope: anything in this repository — the plugin itself, the Pawn includes it
-generates, the build scripts and the CI workflows.
+This policy covers the plugin in `NullSablex/mysql_samp`: the Rust source, the
+generated Pawn includes and the examples.
 
-Out of scope, because they are not this project's to fix:
+A plugin that sits between untrusted input (whatever a player typed) and a
+database credential makes these the findings that matter most:
 
-- vulnerabilities in MySQL, MariaDB, SA-MP or open.mp themselves;
-- gamemode code that misuses the API, for example building SQL with
-  [`%r`](https://nullsablex.github.io/mysql_samp/security/) or with the standard
-  `format` and then passing player input into it. The
-  [security page](https://nullsablex.github.io/mysql_samp/security/) explains
-  the safe path;
-- a server operator's own configuration, such as granting the database user
-  more privileges than the gamemode needs, or disabling certificate
-  verification with `MYSQL_OPT_SSL_VERIFY_CERT`.
+- **SQL injection** — any value that reaches the SQL text unescaped when the
+  API promised otherwise: `%s` in `mysql_format`, an ORM column or table name,
+  a `cache_*` value fed back into a query, or escaping that does not match the
+  server's `sql_mode`. The plugin detects `NO_BACKSLASH_ESCAPES` per connection
+  and escapes accordingly; a case where that detection is wrong, or where the
+  mode changes under it, is in scope.
+- **TLS** — a session that continues unencrypted when `MYSQL_OPT_SSL` asked for
+  encryption, a certificate accepted while verification is on, or a hostname
+  that is not checked.
+- **Credential exposure** — the database password, or a value carrying it,
+  reaching the console, `logs/mysql.log`, an error message or a panic. The same
+  applies to a plaintext password handed to `mysql_hash_password`.
+- **Memory safety and exhaustion** — a crash, a use-after-free or unbounded
+  growth reachable from Pawn: cache entries, result rows, prepared statements,
+  transactions or ORM instances.
+- **Password storage** — an Argon2id hash that verifies when it should not, or
+  parameters weaker than documented.
 
-A report that shows the **plugin's own documentation leads people into an
+Out of scope: vulnerabilities in MySQL, MariaDB, SA-MP or open.mp themselves; a
+server operator's own configuration, such as granting the database user more
+privileges than the gamemode needs; and gamemode code built on top of the
+plugin — including a gamemode that turns a protection off
+(`MYSQL_OPT_SSL_VERIFY_CERT = 0`, `%r`), which the plugin documents as
+dangerous and requires you to opt into.
+
+A report showing that **the plugin's own documentation leads people into an
 insecure pattern** is in scope, even when no code change is needed.
+
+---
+
+## Supported versions
+
+Only the most recent [release](https://github.com/NullSablex/mysql_samp/releases)
+receives security fixes.
+
+---
+
+## Dependencies
+
+The MySQL protocol and TLS are compiled into the binary: the plugin loads no
+`libmysqlclient` and no OpenSSL. TLS is
+[rustls](https://github.com/rustls/rustls), verifying against the webpki root
+bundle that ships inside the binary rather than the operating system's store —
+which is why a server with an internal CA needs `MYSQL_OPT_SSL_CA`. The driver
+is [mysql](https://github.com/blackbeam/rust-mysql-simple) with
+`default-features = false`, and password hashing is
+[argon2](https://github.com/RustCrypto/password-hashes), keeping the whole
+dependency tree pure Rust.
+
+Known advisories against dependencies are tracked in
+[`CHANGELOG.md`](CHANGELOG.md) and audited in CI on every pull request and
+weekly on a schedule.
+
+---
 
 ## Hardening guidance
 

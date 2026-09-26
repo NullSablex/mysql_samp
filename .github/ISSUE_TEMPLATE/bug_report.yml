@@ -1,0 +1,72 @@
+name: Bug report
+description: Something the plugin does wrong, or does not do at all.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never paste a real database password.** Replace it with `xxx` in
+        anything you attach — `mysql.ini`, a log excerpt or a screenshot. A
+        syntax error also echoes part of the statement that caused it, so check
+        the query before pasting it.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The smallest gamemode snippet that shows it, and the steps.
+      render: pawn
+    validations:
+      required: true
+  - type: dropdown
+    id: server
+    attributes:
+      label: Server
+      options:
+        - open.mp, native component (components/)
+        - open.mp, legacy plugin (plugins/ + legacy_plugins)
+        - SA-MP
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      description: The banner prints it when the server starts.
+      placeholder: "1.3.0"
+    validations:
+      required: true
+  - type: input
+    id: database
+    attributes:
+      label: Database
+      description: MySQL or MariaDB, and the version. `SELECT VERSION();` prints it.
+      placeholder: "MariaDB 11.8"
+    validations:
+      required: false
+  - type: dropdown
+    id: include
+    attributes:
+      label: Which include
+      options:
+        - "<mysql_samp> (snake_case)"
+        - "<mysql_samp_omp> (Prefix_PascalCase)"
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log
+      description: |
+        The relevant lines from the console and from `logs/mysql.log`, with
+        credentials removed. `mysql_errno` / `mysql_error` help too, and so
+        does `OnQueryError` when a query is involved.
+      render: text
+    validations:
+      required: false

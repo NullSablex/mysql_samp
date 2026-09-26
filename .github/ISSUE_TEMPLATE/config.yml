@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/NullSablex/mysql_samp/security/advisories/new
+    about: Report it privately, never as a public issue. See SECURITY.md.
+  - name: Documentation
+    url: https://nullsablex.github.io/mysql_samp/
+    about: Connection, queries, cache, ORM, options and security, page by page.
+  - name: Migrating from MySQL R41-4
+    url: https://nullsablex.github.io/mysql_samp/migration/
+    about: Native by native, with what changed and why.
