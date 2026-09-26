@@ -128,6 +128,15 @@ impl MysqlPlugin {
             return false;
         };
 
+        if callback == crate::natives::query::SYNC_CALLBACK {
+            let native = if ordered {
+                "mysql_stmt_execute"
+            } else {
+                "mysql_stmt_pexecute"
+            };
+            return self.reject_sync(native, conn_id);
+        }
+
         let callback_info = if callback.is_empty() {
             None
         } else {

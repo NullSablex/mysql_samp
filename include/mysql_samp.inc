@@ -31,6 +31,29 @@ enum {
     MYSQL_OPT_POOL_SIZE,
 }
 
+/**
+ * Pass this where a callback name goes to make that ONE call blocking.
+ *
+ * Everything in this plugin is non-blocking by default, and that is the right
+ * default: a query that waits freezes every player. Sometimes waiting is worth
+ * it anyway - schema work in OnGameModeInit, a migration, a one-off console
+ * command - and then the alternative is chaining callbacks for something that
+ * runs once.
+ *
+ * The call runs on the server thread and returns when the database answers.
+ * The result is the current cache right after it, so the cache getters read it
+ * on the very next line, with no forward and no public.
+ *
+ * It stays current until the next blocking call replaces it, or until the
+ * active cache is unset. A failure returns false and fires OnQueryError, the
+ * same as the threaded path. See the documentation for worked examples.
+ *
+ * NEVER use it in a callback that runs per player or per tick. The whole
+ * server stops for as long as the database takes, and that is visible to
+ * everyone online.
+ */
+#define MYSQL_SYNC "!sync"
+
 // Memory limits, for mysql_limit_set / mysql_limit_get
 enum {
     // Saved caches held by cache_save at once. Default 1024.

@@ -151,12 +151,13 @@ Coverage of the MySQL R41-4 (BlueG / maddinat0r) Pawn API by **mysql_samp**. Sou
 | Build banner | Date/time stamped by `build.rs` via `BUILD_DATE` / `BUILD_TIME` / `BUILD_YEAR` |
 | Connection pool | `mysql::Pool` (`Clone + Send + Sync`) for safe multi-threaded access |
 | Fully non-blocking queries | Both `mysql_query` (FIFO) and `mysql_pquery` (parallel) run on worker threads |
+| Opt-in blocking, per call | `MYSQL_SYNC` in the callback slot blocks that one call; refused inside a callback, and on every native that could not honour it |
 | ORM auto-cleanup | `OrmManager::destroy_by_amx` frees instances when their AMX is unloaded |
 | Universal SA-MP + Open Multiplayer binary | The same `.so` / `.dll` runs natively (component) or in legacy mode (`legacy_plugins`) |
 | Unified `on_tick` | Dispatches callbacks via `ProcessTick` (SA-MP) and `ITimersComponent` (Open Multiplayer native), no Pawn `SetTimer` required |
 | `mysql_format` safe truncation | Truncates at the destination buffer boundary respecting UTF-8 char boundaries; warns once per call |
 | Strict integer conversions | Every cross-width / sign-changing conversion goes through `TryFrom` / `From`; no silent wrap from `as` |
-| 178 unit tests | Cover the entire pure surface (parser, renderer, escape modes, placeholder scanner, cache, ORM, statements, transactions, Argon2id) |
+| 188 unit tests | Cover the entire pure surface (parser, renderer, escape modes, placeholder scanner, cache, ORM, statements, transactions, Argon2id) |
 
 ## Totals
 

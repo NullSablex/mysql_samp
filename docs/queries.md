@@ -100,6 +100,70 @@ mysql_query(g_mysql, "UPDATE players SET last_login = NOW() WHERE id = 1");
 
 A failure still fires `OnQueryError`.
 
+## MYSQL_SYNC — making one call block, on purpose
+
+There is no synchronous native, and there will not be one: a native named
+`mysql_query_sync` is copied around a gamemode until something blocks inside
+`OnPlayerUpdate`. What exists instead is a value you write **where the callback
+name goes**, which turns that one call — and only that one — into a blocking
+call:
+
+```pawn
+mysql_query(g_mysql, "SELECT COUNT(*) AS n FROM accounts", MYSQL_SYNC);
+new total = cache_get_value_name_int(0, "n");
+```
+
+The call returns when the database answers, and the result is the current cache
+on the very next line. No forward, no public, and the value is available in the
+same scope that asked for it.
+
+### When it is worth it
+
+Only when nobody is online to feel it, and the alternative is worse:
+
+- **Schema and migrations at start-up.** The strongest case, because each
+  statement depends on the previous one having finished, and threaded calls run
+  concurrently:
+
+  ```pawn
+  public OnGameModeInit()
+  {
+      g_mysql = mysql_connect(...);
+      mysql_query_file(g_mysql, "schema.sql", MYSQL_SYNC);
+      // From here on the tables exist. No callback chain, no race.
+      return 1;
+  }
+  ```
+
+- **A one-off console or admin command** where reading the answer inline keeps
+  the code honest and the freeze is a few milliseconds.
+
+### When it is wrong
+
+**Never in anything that runs per player or per tick.** `OnPlayerConnect`,
+`OnPlayerText`, a timer: the whole server stops for as long as the database
+takes. On a local database that is a few milliseconds; on a remote one, or one
+under load, it is the difference between a server and a slideshow. A query that
+takes 2 s costs every player 2 s — measured, not estimated.
+
+### The rules
+
+- **It is refused inside a callback.** There, the current cache already belongs
+  to the callback, and a blocking result would either shadow it or be
+  unreadable — both surprises. The call is not run, `false` comes back and the
+  reason is logged. Run it before the callback, or use a threaded call.
+- **One result at a time.** The next blocking call replaces the previous one.
+  It stays current until then, or until `cache_unset_active()`.
+- **Errors behave the same as threaded ones.** `false` comes back,
+  `mysql_errno` is set and `OnQueryError` fires, with `MYSQL_SYNC` as the
+  callback name so the handler can tell where it came from.
+- **Supported on `mysql_query`, `mysql_pquery` and `mysql_query_file`.** On
+  `mysql_pquery` it behaves exactly like `mysql_query`, since a blocking call
+  has nothing to run in parallel with. Everywhere else — prepared statements,
+  transactions, the ORM, password hashing — it is refused with a message
+  naming what to use instead, so it can never be mistaken for a callback that
+  silently never fires.
+
 ## mysql_pquery — parallel, no ordering
 
 ```pawn

@@ -31,6 +31,17 @@ impl MysqlPlugin {
         let password = password.to_string();
         let callback = callback.to_string();
 
+        if callback == crate::natives::query::SYNC_CALLBACK {
+            // There is nowhere to put the hash without a callback: the
+            // signature has no output buffer. Hashing is also deliberately
+            // slow, so blocking on it would be the worst place to do it.
+            Logger::warn(
+                "MYSQL_SYNC is not supported here: the result is delivered through the \
+                 callback, and hashing is deliberately slow enough that blocking on it \
+                 would stall the server. The call was NOT run.",
+            );
+            return false;
+        }
         if callback.is_empty() {
             Logger::warn(
                 "mysql_hash_password: a callback is required — the hash is delivered through it.",
@@ -85,6 +96,17 @@ impl MysqlPlugin {
         let hash = hash.to_string();
         let callback = callback.to_string();
 
+        if callback == crate::natives::query::SYNC_CALLBACK {
+            // There is nowhere to put the hash without a callback: the
+            // signature has no output buffer. Hashing is also deliberately
+            // slow, so blocking on it would be the worst place to do it.
+            Logger::warn(
+                "MYSQL_SYNC is not supported here: the result is delivered through the \
+                 callback, and hashing is deliberately slow enough that blocking on it \
+                 would stall the server. The call was NOT run.",
+            );
+            return false;
+        }
         if callback.is_empty() {
             Logger::warn(
                 "mysql_verify_password: a callback is required — the result is delivered through it.",

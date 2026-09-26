@@ -175,6 +175,10 @@ impl MysqlPlugin {
             return false;
         };
 
+        if callback_str == crate::natives::query::SYNC_CALLBACK {
+            return self.reject_sync(&format!("ORM {name}"), conn_id);
+        }
+
         let callback_info = if callback_str.is_empty() {
             None
         } else {
