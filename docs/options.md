@@ -107,6 +107,8 @@ Setting only one of the two logs a warning and the client certificate is ignored
 
 `MYSQL_OPT_SSL` has no effect when the host is a unix socket (a path starting with `/`) — there is nothing to encrypt on a local socket. Use a TCP host: a hostname, an IPv4 address, or an IPv6 address in brackets (`[::1]`).
 
+A loopback TCP host such as `127.0.0.1` stays on TCP when TLS is on. The driver would otherwise move a loopback connection to the server's unix socket after the handshake, quietly dropping the encryption; asking for TLS switches that optimisation off. Verify it rather than assume it — [`mysql_tls_active`](connection.md#mysql_tls_active) reports what the handshake settled on.
+
 #### Disabling verification
 
 ```pawn

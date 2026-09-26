@@ -21,6 +21,10 @@ struct ConnectionEntry {
     last_error: ErrorState,
     auto_reconnect: bool,
     escape_mode: EscapeMode,
+    /// Cipher the handshake negotiated, or `None` when the session is
+    /// unencrypted. Read once at connect time, on the connection that is
+    /// already open, so the diagnostic natives are a lookup and never a query.
+    tls_cipher: Option<String>,
 }
 
 pub struct QueryError {
@@ -118,7 +122,7 @@ impl ConnectionManager {
                     .with_danger_skip_domain_validation(true);
             }
 
-            builder.ssl_opts(Some(ssl_opts))
+            builder.ssl_opts(Some(ssl_opts)).prefer_socket(false)
         } else {
             builder
         };
@@ -169,8 +173,8 @@ impl ConnectionManager {
         };
 
         // Validate by getting a connection (Pool connects lazily on first get_conn)
-        let escape_mode = match pool.get_conn() {
-            Ok(mut conn) => detect_escape_mode(&mut conn),
+        let (escape_mode, tls_cipher) = match pool.get_conn() {
+            Ok(mut conn) => (detect_escape_mode(&mut conn), detect_tls_cipher(&mut conn)),
             Err(e) => {
                 let detail = format!("Connection failed: {}", e);
                 let code = MysqlError::ConnectionFailed.code();
@@ -197,6 +201,7 @@ impl ConnectionManager {
                 last_error: ErrorState::ok(),
                 auto_reconnect: options.auto_reconnect,
                 escape_mode,
+                tls_cipher,
             },
         );
 
@@ -283,6 +288,19 @@ impl ConnectionManager {
 
     /// Escaping mode of a connection. Unknown IDs fall back to the MySQL
     /// default, which is what a server uses unless configured otherwise.
+    /// The cipher the session negotiated, or `None` when it is unencrypted or
+    /// the id is unknown.
+    pub fn tls_cipher(&self, conn_id: i32) -> Option<&str> {
+        self.connections.get(&conn_id)?.tls_cipher.as_deref()
+    }
+
+    /// Whether the session is encrypted. An unknown id reads as not encrypted:
+    /// a diagnostic must not claim a guarantee for a connection that is not
+    /// there.
+    pub fn tls_active(&self, conn_id: i32) -> bool {
+        self.tls_cipher(conn_id).is_some()
+    }
+
     pub fn escape_mode(&self, conn_id: i32) -> EscapeMode {
         self.connections
             .get(&conn_id)
@@ -295,6 +313,31 @@ impl ConnectionManager {
         let mut conn = entry.pool.get_conn().ok()?;
         let result: Option<String> = conn.query_first("SELECT @@character_set_connection").ok()?;
         result
+    }
+}
+
+/// Reads the cipher of the session that was just opened.
+///
+/// `Ssl_cipher` is empty on an unencrypted session, which is how the server
+/// reports "no TLS" - there is no separate flag to read. A failure to read it
+/// is reported as `None` rather than guessed: claiming encryption that was not
+/// confirmed is the one wrong answer a security diagnostic can give.
+fn detect_tls_cipher(conn: &mut PooledConn) -> Option<String> {
+    let row: Option<(String, String)> = conn
+        .query_first("SHOW SESSION STATUS LIKE 'Ssl_cipher'")
+        .ok()
+        .flatten();
+
+    match row {
+        Some((_, cipher)) if !cipher.is_empty() => Some(cipher),
+        Some(_) => None,
+        None => {
+            Logger::warn(
+                "Could not read Ssl_cipher; mysql_tls_active will report false for this \
+                 connection even if the session is encrypted.",
+            );
+            None
+        }
     }
 }
 
@@ -871,6 +914,35 @@ mod tests {
         assert_eq!(
             escape_string(r"\' OR 1=1 -- ", EscapeMode::Backslash),
             r"\\\' OR 1=1 -- "
+        );
+    }
+
+    /// Asking for TLS must also switch off the driver's socket preference.
+    ///
+    /// `prefer_socket` defaults to true, and after the handshake the driver
+    /// reconnects a *loopback* address over the server's unix socket - where
+    /// it does not secure anything ("won't secure socket connection"). The
+    /// result was a connection that asked for TLS, reported no error, and ran
+    /// in plaintext; measured against a real server, `Ssl_cipher` came back
+    /// empty for `127.0.0.1` with `MYSQL_OPT_SSL = 1`.
+    #[test]
+    fn requesting_tls_opts_out_of_the_socket_downgrade() {
+        // The trap: both conditions the driver needs are met by default on the
+        // most ordinary local setup there is.
+        let defaults: Opts = OptsBuilder::new().ip_or_hostname(Some("127.0.0.1")).into();
+        assert!(defaults.get_prefer_socket());
+        assert!(defaults.addr_is_loopback());
+
+        // What connect() now builds when MYSQL_OPT_SSL is on.
+        let secured: Opts = OptsBuilder::new()
+            .ip_or_hostname(Some("127.0.0.1"))
+            .ssl_opts(Some(SslOpts::default()))
+            .prefer_socket(false)
+            .into();
+        assert!(secured.get_ssl_opts().is_some());
+        assert!(
+            !secured.get_prefer_socket(),
+            "a TLS connection must not be downgraded to a unix socket"
         );
     }
 

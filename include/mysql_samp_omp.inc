@@ -148,6 +148,34 @@ native bool:MySQL_Close(connId) = mysql_close;
  */
 native bool:MySQL_Status(connId, dest[], max_len = sizeof(dest)) = mysql_status;
 
+/**
+ * Tells whether the session is encrypted, as the handshake settled it.
+ *
+ * This is not the same as having asked for TLS with MYSQL_OPT_SSL: the option
+ * is the request, and the answer is what the server and the client agreed on.
+ * Checking it is how a gamemode verifies its own deployment instead of
+ * trusting the option it passed.
+ *
+ * @param connId  connection id
+ * @return true when the session is encrypted, false when it is not, when the
+ *         cipher could not be read, or when the id is unknown
+ */
+native bool:MySQL_TlsActive(connId) = mysql_tls_active;
+
+/**
+ * Writes the cipher suite the session negotiated into dest.
+ *
+ * Writes an empty string when the session is not encrypted - that is the
+ * answer, not an error. The return value separates it from an unknown id.
+ *
+ * @param connId   connection id
+ * @param dest     destination buffer
+ * @param max_len  size of dest
+ * @return true when a cipher was written, false when the session is not
+ *         encrypted or the id is unknown
+ */
+native bool:MySQL_TlsCipher(connId, dest[], max_len = sizeof(dest)) = mysql_tls_cipher;
+
 // Error
 
 /**

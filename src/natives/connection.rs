@@ -124,6 +124,39 @@ impl MysqlPlugin {
         }
     }
 
+    /// Whether the session is encrypted, as the handshake settled it.
+    ///
+    /// This is not "was TLS asked for": `MYSQL_OPT_SSL` is the request, and a
+    /// request can be refused. Reading what was negotiated is what lets a
+    /// gamemode verify its own deployment instead of trusting the option it
+    /// passed.
+    #[native(name = "mysql_tls_active")]
+    pub fn mysql_tls_active(&mut self, _amx: &Amx, conn_id: i32) -> bool {
+        self.connections.tls_active(conn_id)
+    }
+
+    /// Writes the negotiated cipher suite, empty when the session is not
+    /// encrypted.
+    #[native(name = "mysql_tls_cipher")]
+    pub fn mysql_tls_cipher(
+        &mut self,
+        _amx: &Amx,
+        conn_id: i32,
+        dest: UnsizedBuffer,
+        dest_len: usize,
+    ) -> AmxResult<bool> {
+        // An unencrypted session is not a failure to report through the error
+        // state: it is the answer. The empty string says it, and the return
+        // value distinguishes it from a connection that does not exist.
+        let cipher = self
+            .connections
+            .tls_cipher(conn_id)
+            .unwrap_or("")
+            .to_owned();
+        dest.write_str(dest_len, &cipher)?;
+        Ok(!cipher.is_empty())
+    }
+
     #[native(name = "mysql_close")]
     pub fn mysql_close(&mut self, _amx: &Amx, connection_id: i32) -> bool {
         if self.connections.disconnect(connection_id) {

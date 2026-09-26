@@ -24,6 +24,8 @@ initialize_plugin!(
         MysqlPlugin::mysql_connect_file,
         MysqlPlugin::mysql_close,
         MysqlPlugin::mysql_status,
+        MysqlPlugin::mysql_tls_active,
+        MysqlPlugin::mysql_tls_cipher,
         // Options
         MysqlPlugin::mysql_options_new,
         MysqlPlugin::mysql_options_set_int,

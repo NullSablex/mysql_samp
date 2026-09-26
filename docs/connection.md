@@ -62,6 +62,41 @@ Two things to know:
 - **The server has to be listening on IPv6.** MySQL binds IPv4 only by default; it needs `bind-address = ::` (or a specific IPv6 address) in the server configuration. A refused connection to `[::1]` is usually this, not the plugin.
 - **TLS to an IP literal needs a certificate issued for that IP** (an `iPAddress` entry in the certificate's SAN), which is uncommon — certificates are normally issued for names. If you use `MYSQL_OPT_SSL` with certificate verification on, connect by hostname, or expect verification to fail.
 
+## mysql_tls_active
+
+```pawn
+native bool:mysql_tls_active(connId);
+```
+
+Whether the session is encrypted, as the handshake settled it — not whether
+`MYSQL_OPT_SSL` was asked for. The option is the request; this is the answer.
+
+## mysql_tls_cipher
+
+```pawn
+native bool:mysql_tls_cipher(connId, dest[], max_len = sizeof(dest));
+```
+
+Writes the cipher suite the session negotiated, for example
+`TLS_AES_256_GCM_SHA384`. An unencrypted session writes an empty string and
+returns `false` — that is the answer, not an error; the return value is what
+separates it from an unknown connection id.
+
+Both read a value captured once, on the connection the handshake opened, so
+neither costs a query.
+
+```pawn
+new cipher[64];
+if (mysql_tls_cipher(g_mysql, cipher))
+    printf("[MySQL] encrypted with %s", cipher);
+else
+    print("[MySQL] NOT encrypted");
+```
+
+Worth checking at startup on a server that is supposed to require TLS: a
+misconfiguration that leaves the session in plaintext looks exactly like a
+working connection from every other angle.
+
 ### Unix socket
 
 If `host` starts with `/`, the plugin connects via the local socket and the configured port is ignored.
