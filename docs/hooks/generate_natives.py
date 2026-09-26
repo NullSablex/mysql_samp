@@ -1,4 +1,4 @@
-"""MkDocs hook: regenerates the natives page before the site is built.
+"""MkDocs hook: regenerates the API reference before the site is built.
 
 Keeping the page out of the repository and building it here is what makes
 "generated from the includes" true rather than aspirational: there is no
@@ -28,5 +28,5 @@ def on_config(config):  # noqa: ANN001, ANN201 - MkDocs hook signature
     page, undocumented = module.build()
     module.OUTPUT.write_text(page, encoding="utf-8")
     if undocumented:
-        print(f"WARNING - natives page: {len(undocumented)} entries have no doc block")
+        print(f"WARNING - API reference: {len(undocumented)} entries have no doc block")
     return config

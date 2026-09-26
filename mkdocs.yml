@@ -104,7 +104,6 @@ nav:
       - Examples: migration-examples.md
   - Reference:
       - API reference: api-reference.md
-      - Natives: natives.md
       - Benchmark: benchmark.md
 
 extra:

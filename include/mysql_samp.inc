@@ -10,6 +10,13 @@
 #endif
 #define _mysql_samp_included
 
+/**
+ * The plugin version this include was generated for.
+ *
+ * build.rs stamps it from Cargo.toml on every build, so the value in the
+ * include always matches the binary it shipped with. Comparing it at start-up
+ * is how a gamemode catches an include left behind by an upgrade.
+ */
 #define MYSQL_SAMP_VERSION "1.4.0"
 
 // Connection options

@@ -35,7 +35,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BASE_INCLUDE = ROOT / "include/mysql_samp.inc"
 OMP_INCLUDE = ROOT / "include/mysql_samp_omp.inc"
-OUTPUT = ROOT / "docs/natives.md"
+OUTPUT = ROOT / "docs/api-reference.md"
 
 
 @dataclass
@@ -52,6 +52,14 @@ class Doc:
         return not (
             self.summary or self.remarks or self.params or self.returns or self.examples
         )
+
+
+@dataclass
+class EnumBlock:
+    """One `enum { ... }` and the constants inside it."""
+
+    title: str
+    values: list[tuple[str, int, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -208,6 +216,52 @@ def parse_doc(block: str) -> Doc:
     return doc
 
 
+def parse_enums(source: str) -> list[EnumBlock]:
+    """Reads the `enum { ... }` blocks, values and all.
+
+    The values are part of the contract - a script may compare against them -
+    and the include is where they are defined, so writing them out by hand in
+    Markdown means maintaining the same numbers twice.
+    """
+    blocks: list[EnumBlock] = []
+    lines = source.splitlines()
+
+    for index, raw in enumerate(lines):
+        if raw.strip() != "enum {":
+            continue
+
+        # The `// Title` line above the block names it.
+        title = "Constants"
+        for back in range(index - 1, max(index - 3, -1), -1):
+            header = re.match(r"//\s+(.+)$", lines[back].strip())
+            if header:
+                title = header.group(1).strip()
+                break
+
+        block = EnumBlock(title=title)
+        nxt = 0
+        comment: list[str] = []
+
+        for line in lines[index + 1 :]:
+            text = line.strip()
+            if text.startswith("}"):
+                break
+            if text.startswith("//"):
+                comment.append(text[2:].strip())
+                continue
+            entry = re.match(r"([A-Z][A-Z0-9_]*)\s*(?:=\s*(-?\d+))?\s*,?$", text)
+            if entry:
+                value = int(entry.group(2)) if entry.group(2) is not None else nxt
+                nxt = value + 1
+                block.values.append((entry.group(1), value, " ".join(comment)))
+                comment = []
+
+        if block.values:
+            blocks.append(block)
+
+    return blocks
+
+
 def parse_include(path: Path) -> list[Entry]:
     """Walks an include, pairing each declaration with the block above it."""
     source = path.read_text(encoding="utf-8")
@@ -326,16 +380,23 @@ def anchor(heading: str) -> str:
     return re.sub(r"[\s]+", "-", slug)
 
 
-def render(entries: list[Entry]) -> str:
+def render(entries: list[Entry], enums: list[EnumBlock]) -> str:
     out: list[str] = []
-    out.append("# Natives\n")
+    out.append("# API reference\n")
     out.append(
-        "Generated from [`include/mysql_samp.inc`]"
+        "Every native, forward and constant the plugin exposes, generated from "
+        "[`include/mysql_samp.inc.in`]"
         "(https://github.com/NullSablex/mysql_samp/blob/master/include/mysql_samp.inc.in) "
-        "on every docs build, so it cannot drift from what the plugin registers. "
-        "Every entry shows the snake_case name and, where one exists, the "
-        "`Prefix_PascalCase` alias that [`<mysql_samp_omp>`](installation.md#place-the-include) "
-        "declares for it — the two are the same native.\n"
+        "on every docs build. Nothing here is written by hand, so it cannot "
+        "drift from what the plugin declares.\n"
+    )
+    out.append(
+        "Names are listed in the snake_case form that `<mysql_samp>` declares. "
+        "The alternative include "
+        "[`<mysql_samp_omp>`](installation.md#place-the-include) declares the "
+        "same set under open.mp's `Prefix_PascalCase` convention, shown beside "
+        "each signature — aliases only, so the behaviour described here is the "
+        "behaviour of both.\n"
     )
     natives = len([e for e in entries if e.kind == "native"])
     forwards = len([e for e in entries if e.kind == "forward"])
@@ -350,6 +411,24 @@ def render(entries: list[Entry]) -> str:
     for first in ("Forwards", "Constants"):
         if first in by_section:
             by_section = {first: by_section.pop(first), **by_section}
+
+    if enums:
+        out.append("## Enumerations\n")
+        out.append(
+            "Values are part of the contract — a script may compare against "
+            "them — so they are read from the include rather than copied here.\n"
+        )
+        for block in enums:
+            out.append(f"### {re.sub(r',.*$', '', block.title)}\n")
+            has_notes = any(note for _, _, note in block.values)
+            out.append("| Constant | Value | Notes |" if has_notes else "| Constant | Value |")
+            out.append("|---|---|---|" if has_notes else "|---|---|")
+            for name, value, note in block.values:
+                row = f"| `{name}` | {value} |"
+                if has_notes:
+                    row += f" {emphasise(note)} |"
+                out.append(row)
+            out.append("")
 
     out.append("## Index\n")
     for section, items in by_section.items():
@@ -395,12 +474,13 @@ def render(entries: list[Entry]) -> str:
 
 def build() -> tuple[str, list[str]]:
     entries = parse_include(BASE_INCLUDE)
+    enums = parse_enums(BASE_INCLUDE.read_text(encoding="utf-8"))
     aliases = parse_aliases(OMP_INCLUDE)
     for entry in entries:
         entry.alias = aliases.get(entry.name, "")
 
     undocumented = [e.name for e in entries if e.doc.is_empty()]
-    return render(entries), undocumented
+    return render(entries, enums), undocumented
 
 
 SELFTEST_CASES: list[tuple[str, str, Doc]] = [

@@ -78,7 +78,7 @@ greps for errors reports success for a file that never compiled.
   in the signature. It is a cross-check by hand, not a replacement for the
   `.inc.in`, which carries the Pawn tags, the enums and the JavaDoc that the
   generated file has no way to know about.
-- **The natives page is generated, not written.** `docs/natives.md` is built
+- **The API reference is generated, not written.** `docs/api-reference.md` is built
   from the includes by `scripts/gen_natives_page.py` on every docs build, so
   it is not in the repository and editing it is pointless. What reaches that
   page is the JavaDoc block in `include/mysql_samp.inc.in` - including
@@ -87,7 +87,7 @@ greps for errors reports success for a file that never compiled.
   read correctly in both files.
 
   ```bash
-  python3 scripts/gen_natives_page.py             # write docs/natives.md
+  python3 scripts/gen_natives_page.py             # write docs/api-reference.md
   python3 scripts/gen_natives_page.py --check     # fail if an entry has no doc block
   python3 scripts/gen_natives_page.py --selftest  # parser fixtures, JavaDoc and pawndoc
   ```

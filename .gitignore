@@ -8,6 +8,6 @@ CLAUDE.md
 # MkDocs
 /site
 # Built from the includes on every docs build; see scripts/gen_natives_page.py
-/docs/natives.md
+/docs/api-reference.md
 /.venv
 __pycache__/
