@@ -254,6 +254,23 @@ impl CacheManager {
     }
 
     /// Manually activates a saved cache (overrides stack top).
+    /// Frees the blocking result at the frame boundary.
+    ///
+    /// The async path frees its cache deterministically - pushed before the
+    /// callback, popped when it returns - and a blocking call has no callback
+    /// to hang that on. Tying it to the tick gives the same guarantee for the
+    /// same reason: the server is single-threaded, so a Pawn function runs
+    /// whole inside one frame, and by the next tick whoever called has already
+    /// returned. Anything that must outlive the frame is what `cache_save` is
+    /// for.
+    ///
+    /// Without this the result would sit there until the next blocking call,
+    /// which in a script that runs one at start-up means for the life of the
+    /// process - up to the row cap's worth of memory, held for nothing.
+    pub fn release_sync_result(&mut self) {
+        self.sync_active = None;
+    }
+
     /// Whether a query callback is running right now.
     ///
     /// The stack is pushed before a callback and popped when it returns, so a
@@ -767,5 +784,32 @@ mod tests {
         assert!(mgr.unset_active());
         assert!(mgr.get_active().is_none());
         assert!(!mgr.unset_active(), "nothing left to clear");
+    }
+    #[test]
+    fn the_frame_boundary_frees_a_blocking_result() {
+        let mut mgr = CacheManager::new();
+        mgr.set_sync_result(CacheEntry::empty("blocking".to_string()));
+        assert!(mgr.get_active().is_some());
+
+        mgr.release_sync_result();
+        assert!(
+            mgr.get_active().is_none(),
+            "a blocking result must not outlive the frame that asked for it"
+        );
+    }
+
+    #[test]
+    fn the_frame_boundary_leaves_saved_caches_alone() {
+        // What a script asked to keep is kept; only the implicit result goes.
+        let mut mgr = CacheManager::new();
+        mgr.push_active(CacheEntry::empty("callback".to_string()));
+        let id = mgr.save();
+        mgr.pop_active();
+
+        mgr.set_sync_result(CacheEntry::empty("blocking".to_string()));
+        mgr.release_sync_result();
+
+        assert!(id > 0);
+        assert!(mgr.set_active(id), "the saved cache is still there");
     }
 }

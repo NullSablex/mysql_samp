@@ -172,6 +172,10 @@ impl SampPlugin for MysqlPlugin {
     /// Open Multiplayer native mode (ITimersComponent timer). Drives query
     /// dispatch automatically — no Pawn timer required anymore.
     fn on_tick(&mut self, _ctx: TickContext) {
+        // A new frame: whoever made a blocking call last frame has long
+        // returned, so its result is nobody's any more.
+        self.cache.release_sync_result();
+
         self.process_pending_queries();
         self.process_pending_passwords();
     }

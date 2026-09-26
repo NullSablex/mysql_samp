@@ -157,7 +157,7 @@ Coverage of the MySQL R41-4 (BlueG / maddinat0r) Pawn API by **mysql_samp**. Sou
 | Unified `on_tick` | Dispatches callbacks via `ProcessTick` (SA-MP) and `ITimersComponent` (Open Multiplayer native), no Pawn `SetTimer` required |
 | `mysql_format` safe truncation | Truncates at the destination buffer boundary respecting UTF-8 char boundaries; warns once per call |
 | Strict integer conversions | Every cross-width / sign-changing conversion goes through `TryFrom` / `From`; no silent wrap from `as` |
-| 188 unit tests | Cover the entire pure surface (parser, renderer, escape modes, placeholder scanner, cache, ORM, statements, transactions, Argon2id) |
+| 190 unit tests | Cover the entire pure surface (parser, renderer, escape modes, placeholder scanner, cache, ORM, statements, transactions, Argon2id) |
 
 ## Totals
 

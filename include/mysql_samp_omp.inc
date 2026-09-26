@@ -50,9 +50,11 @@ enum {
  * The result is the current cache right after it, so the cache getters read it
  * on the very next line, with no forward and no public.
  *
- * It stays current until the next blocking call replaces it, or until the
- * active cache is unset. A failure returns false and fires OnQueryError, the
- * same as the threaded path. See the documentation for worked examples.
+ * The result is freed at the next server tick, so read it on the lines right
+ * after the call and save it if it has to last longer. A second blocking call
+ * within the same frame replaces the first. A failure returns false and fires
+ * OnQueryError, the same as the threaded path. See the documentation for
+ * worked examples.
  *
  * NEVER use it in a callback that runs per player or per tick. The whole
  * server stops for as long as the database takes, and that is visible to

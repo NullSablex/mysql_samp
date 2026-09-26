@@ -152,8 +152,14 @@ takes 2 s costs every player 2 s — measured, not estimated.
   to the callback, and a blocking result would either shadow it or be
   unreadable — both surprises. The call is not run, `false` comes back and the
   reason is logged. Run it before the callback, or use a threaded call.
-- **One result at a time.** The next blocking call replaces the previous one.
-  It stays current until then, or until `cache_unset_active()`.
+- **The result lives for the current frame.** It is freed on the next server
+  tick, the same way a threaded result is freed when its callback returns.
+  Read it on the lines right after the call — which is the whole point — and
+  use `cache_save()` if it has to last longer. Nothing to free by hand: the
+  plugin does not ask you to remember a `cache_delete`, and this does not
+  become the exception.
+- **One at a time within the frame.** A second blocking call replaces the
+  first, and `cache_unset_active()` drops it early.
 - **Errors behave the same as threaded ones.** `false` comes back,
   `mysql_errno` is set and `OnQueryError` fires, with `MYSQL_SYNC` as the
   callback name so the handler can tell where it came from.
