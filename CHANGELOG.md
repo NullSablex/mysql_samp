@@ -67,6 +67,8 @@ Built on rust-samp v3.5.0, now from crates.io. Additive on the Pawn side: four n
 
 - **`@example` in a doc block becomes a code block on the page**, and the three natives that accept `MYSQL_SYNC` now carry one, so how to make a call blocking is visible where the native is documented instead of only on the queries page. Native names inside comments are rewritten when the open.mp include is generated, so the same example reads `mysql_query` in one file and `MySQL_Query` in the other.
 
+- **The includes say more where it counts.** The two prepared-statement natives state that they do not accept `MYSQL_SYNC` rather than leaving it unsaid, and `MYSQL_SAMP_VERSION` carries a doc block explaining that `build.rs` stamps it from `Cargo.toml` and that comparing it at start-up is how a gamemode catches an include left behind by an upgrade. Both reach an editor's hover as well as the page.
+
 - **The callback is optional, and the docs now say so where people read.** Nothing forces a callback on a write: `mysql_query(conn, "UPDATE …")` is one line. That was documented in a subsection at the bottom of one page while the opening sentence and all eleven examples implied the opposite, which is where the complaint that the plugin "makes you write callbacks for everything" came from. (#55)
 
 - **FIFO orders callbacks, not execution.** `mysql_query` dispatches callbacks in submission order, but each statement runs on its own connection, concurrently — a `CREATE TABLE` followed by an `INSERT` races and the insert fails. The comparison table recommended `mysql_query` for exactly that. It now points at `mysql_query_file` and transactions, the two things that actually serialise, and two examples were added for the callback-free and ordering cases. (#55)
