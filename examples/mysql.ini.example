@@ -14,6 +14,10 @@
 #   - host takes a hostname, an IPv4, an IPv6 in brackets ([::1]), or a
 #     unix socket path starting with /. The port is NOT part of host.
 #   - Unknown keys are ignored, so sharing this file with another tool is fine.
+#   - ${NAME} in a value is replaced by that environment variable, which is how
+#     the file can NAME a secret instead of holding one. An unset name expands
+#     to nothing and says so in the log. A bare $NAME is left alone, so a
+#     password containing a dollar sign still works.
 #
 # Connection OPTIONS (port, SSL, timeouts, pool size) are NOT read from here.
 # They stay with mysql_options_new so there is one place to look for tuning.
@@ -22,3 +26,8 @@ host     = 127.0.0.1
 user     = samp
 password = change-me
 database = samp_server
+
+# Better: keep the secret out of the file too. The operator exports
+# MYSQL_PASSWORD once, and this file is worth nothing on its own.
+#
+#     password = ${MYSQL_PASSWORD}

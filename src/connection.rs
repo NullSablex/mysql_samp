@@ -158,7 +158,7 @@ impl ConnectionManager {
         let pool = match Pool::new(opts) {
             Ok(p) => p,
             Err(e) => {
-                let detail = format!("Pool creation failed: {}", e);
+                let detail = format!("Pool creation failed: {}", describe_mysql_error(&e));
                 let code = MysqlError::ConnectionFailed.code();
                 Logger::error_detail(
                     &format!(
@@ -176,7 +176,7 @@ impl ConnectionManager {
         let (escape_mode, tls_cipher) = match pool.get_conn() {
             Ok(mut conn) => (detect_escape_mode(&mut conn), detect_tls_cipher(&mut conn)),
             Err(e) => {
-                let detail = format!("Connection failed: {}", e);
+                let detail = format!("Connection failed: {}", describe_mysql_error(&e));
                 let code = MysqlError::ConnectionFailed.code();
                 Logger::error_detail(
                     &format!(

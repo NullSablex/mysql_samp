@@ -160,6 +160,38 @@ Format:
 - Only the first `=` splits the line, so a password may contain `=`.
 - `host`, `user` and `database` are required. `password` may be absent or empty — a local socket account often has none.
 - Unknown keys are ignored, so a file shared with another tool still works.
+- `${NAME}` in a value is replaced by that environment variable.
+
+### Keeping the secret out of the file as well
+
+`mysql_connect_file` keeps the password out of the gamemode. `${NAME}` takes
+the next step and keeps it out of the file, which is what makes a stolen copy
+of the file worth nothing:
+
+```ini
+host     = 127.0.0.1
+user     = samp
+password = ${MYSQL_PASSWORD}
+database = samp_server
+```
+
+The operator exports `MYSQL_PASSWORD` once — in the service unit, the shell
+that starts the server, or the container's environment — and the file only
+names the secret.
+
+- **An unset name expands to nothing** and logs which name was missing. Sending
+  the literal `${MYSQL_PASSWORD}` to the server instead would fail with a
+  confusing "access denied"; an empty password fails for a reason you can read.
+- **A bare `$NAME` is left alone**, so a password that contains a dollar sign
+  keeps working. Only `${...}` is a reference.
+- **It works in any value**, not just the password, and more than one fits in
+  the same value.
+
+This is worth more than encrypting the file. A key that the server must be able
+to read at startup has to live somewhere the server can reach, so an encrypted
+file plus its key is the same secret in two pieces. Naming an environment
+variable removes the secret from the repository and from the deployed files
+outright.
 
 Connection **options** are not part of the file — they stay with `mysql_options_new` and the second parameter, so there is one place to look for tuning:
 
