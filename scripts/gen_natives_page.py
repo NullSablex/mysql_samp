@@ -443,9 +443,11 @@ def render(entries: list[Entry], enums: list[EnumBlock]) -> str:
             out.append("```pawn")
             # A declaration ends in a semicolon; a #define does not.
             out.append(entry.signature if entry.kind == "define" else f"{entry.signature};")
-            if entry.alias:
-                out.append(f"// open.mp style: {entry.alias}")
             out.append("```\n")
+            if entry.alias:
+                # Outside the block on purpose: the alias is the other name for
+                # the same native, not a line anyone types.
+                out.append(f"In `<mysql_samp_omp>`: `{entry.alias}`\n")
 
             if entry.doc.summary:
                 out.append(f"{emphasise(entry.doc.summary)}\n")
