@@ -49,6 +49,11 @@ jobs:
       - name: Install MkDocs and theme
         run: pip install --require-hashes -r docs/requirements.txt
 
+      - name: Check the natives page generator
+        run: |
+          python3 scripts/gen_natives_page.py --selftest
+          python3 scripts/gen_natives_page.py --check
+
       - name: Strict build (fails on warnings)
         run: mkdocs build --strict
 

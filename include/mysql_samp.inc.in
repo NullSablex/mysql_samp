@@ -10,6 +10,13 @@
 #endif
 #define _mysql_samp_included
 
+/**
+ * The plugin version this include was generated for.
+ *
+ * build.rs stamps it from Cargo.toml on every build, so the value in the
+ * include always matches the binary it shipped with. Comparing it at start-up
+ * is how a gamemode catches an include left behind by an upgrade.
+ */
 #define MYSQL_SAMP_VERSION "{{VERSION}}"
 
 // Connection options
@@ -299,9 +306,15 @@ native bool:mysql_log(log_level);
  * @param connId    connection id
  * @param query     the SQL
  * @param callback  callback to fire with the result. Optional: "" (the
- *                  default) discards the result and fires nothing
+ *                  default) discards the result and fires nothing, or
+ *                  MYSQL_SYNC to make THIS call blocking and read the
+ *                  result on the next line
  * @param format    types of the extra callback args ("d" int, "f" float, "s" string)
  * @return true if submitted, false on a bad connection
+ *
+ * @example Blocking, for start-up work. Reads on the next line, no callback:
+ *   mysql_query(sql, "SELECT COUNT(*) AS n FROM accounts", MYSQL_SYNC);
+ *   new total = cache_get_value_name_int(0, "n");
  */
 native bool:mysql_query(connId, const query[], const callback[] = "", const format[] = "", {Float,_}:...);
 
@@ -311,9 +324,15 @@ native bool:mysql_query(connId, const query[], const callback[] = "", const form
  * @param connId    connection id
  * @param query     the SQL
  * @param callback  callback to fire with the result. Optional: "" (the
- *                  default) discards the result and fires nothing
+ *                  default) discards the result and fires nothing, or
+ *                  MYSQL_SYNC to make THIS call blocking and read the
+ *                  result on the next line
  * @param format    types of the extra callback args
  * @return true if submitted, false on a bad connection
+ *
+ * @example Blocking. Same as the FIFO native in this mode, since a call that
+ *          waits has nothing to run in parallel with:
+ *   mysql_pquery(sql, "DELETE FROM sessions WHERE stale = 1", MYSQL_SYNC);
  */
 native bool:mysql_pquery(connId, const query[], const callback[] = "", const format[] = "", {Float,_}:...);
 
@@ -359,9 +378,15 @@ native mysql_format(connId, dest[], max_len, const format[], {Float,_}:...);
  * @param connId    connection id
  * @param path      path to the .sql file
  * @param callback  callback to fire with the last statement's result.
- *                  Optional: "" (the default) discards it
+ *                  Optional: "" (the default) discards it, or MYSQL_SYNC
+ *                  to run the whole file on the server thread, in order,
+ *                  before the call returns
  * @param format    types of the extra callback args
  * @return true if submitted, false on a bad connection or unreadable file
+ *
+ * @example Blocking, which is what schema at start-up wants: the tables exist
+ *          on the line after, with no callback chain and no race:
+ *   mysql_query_file(sql, "schema.sql", MYSQL_SYNC);
  */
 native bool:mysql_query_file(connId, const path[], const callback[] = "", const format[] = "", {Float,_}:...);
 
@@ -433,7 +458,8 @@ native bool:mysql_stmt_bind_null(stmtId);
  *
  * @param stmtId    statement id
  * @param callback  callback to fire with the result. Optional: "" (the
- *                  default) discards the result and fires nothing
+ *                  default) discards the result and fires nothing.
+ *                  MYSQL_SYNC is NOT accepted here
  * @param format    types of the extra callback args
  * @return true if submitted, false on a bad id or arity mismatch
  */
@@ -444,7 +470,8 @@ native bool:mysql_stmt_execute(stmtId, const callback[] = "", const format[] = "
  *
  * @param stmtId    statement id
  * @param callback  callback to fire with the result. Optional: "" (the
- *                  default) discards the result and fires nothing
+ *                  default) discards the result and fires nothing.
+ *                  MYSQL_SYNC is NOT accepted here
  * @param format    types of the extra callback args
  * @return true if submitted, false on a bad id or arity mismatch
  */

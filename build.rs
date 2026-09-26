@@ -110,13 +110,36 @@ fn generate_omp_inc(base_rendered: &str) {
         None => base_rendered,
     };
 
+    // Every base name and the styled name it becomes, longest first so that
+    // `mysql_query_file` is rewritten before `mysql_query` can match its
+    // prefix. Needed because doc comments carry usage examples, and an
+    // example naming `mysql_query` would be wrong in a file where the native
+    // is called `MySQL_Query`.
+    let mut renames: Vec<(String, String)> = body
+        .lines()
+        .filter_map(|line| {
+            let rest = line.trim().strip_prefix("native ")?;
+            let open = rest.find('(')?;
+            let head = rest[..open].trim();
+            let name = head.rsplit(':').next()?.trim();
+            Some((name.to_string(), to_omp_name(name)))
+        })
+        .collect();
+    renames.sort_by_key(|(base, _)| std::cmp::Reverse(base.len()));
+
     for line in body.lines() {
         let trimmed = line.trim();
 
         let Some(rest) = trimmed.strip_prefix("native ") else {
-            // Not a native declaration - copy the line as-is (enum, forward,
-            // define, comment, blank).
-            out.push_str(line);
+            // Not a native declaration. Comments still need the names inside
+            // them rewritten; everything else is copied verbatim.
+            let is_comment =
+                trimmed.starts_with('*') || trimmed.starts_with("/*") || trimmed.starts_with("//");
+            if is_comment {
+                out.push_str(&rewrite_names(line, &renames));
+            } else {
+                out.push_str(line);
+            }
             out.push('\n');
             continue;
         };
@@ -145,6 +168,41 @@ fn generate_omp_inc(base_rendered: &str) {
         fs::write(output_path, &out)
             .unwrap_or_else(|e| panic!("failed to write {output_path}: {e}"));
     }
+}
+
+/// Replaces whole identifiers inside a line, leaving partial matches alone.
+///
+/// A plain `str::replace` would turn `mysql_query_file` into
+/// `MySQL_Query_file` when rewriting `mysql_query`, so each hit is only taken
+/// when the characters around it cannot be part of an identifier.
+fn rewrite_names(line: &str, renames: &[(String, String)]) -> String {
+    let mut out = line.to_string();
+
+    for (base, styled) in renames {
+        let mut from = 0;
+        while let Some(found) = out[from..].find(base.as_str()) {
+            let start = from + found;
+            let end = start + base.len();
+
+            let before_ok = out[..start]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !c.is_alphanumeric() && c != '_');
+            let after_ok = out[end..]
+                .chars()
+                .next()
+                .is_none_or(|c| !c.is_alphanumeric() && c != '_');
+
+            if before_ok && after_ok {
+                out.replace_range(start..end, styled);
+                from = start + styled.len();
+            } else {
+                from = end;
+            }
+        }
+    }
+
+    out
 }
 
 /// `mysql_stmt_new` -> `MySQL_StmtNew`, `cache_get_row_count` ->

@@ -78,6 +78,25 @@ greps for errors reports success for a file that never compiled.
   in the signature. It is a cross-check by hand, not a replacement for the
   `.inc.in`, which carries the Pawn tags, the enums and the JavaDoc that the
   generated file has no way to know about.
+- **The API reference is generated, not written.** `docs/api-reference.md` is built
+  from the includes by `scripts/gen_natives_page.py` on every docs build, so
+  it is not in the repository and editing it is pointless. What reaches that
+  page is the JavaDoc block in `include/mysql_samp.inc.in` - including
+  `@example`, which becomes a code block. Native names inside a comment are
+  rewritten for the open.mp include, so an example can name a native and still
+  read correctly in both files.
+
+  ```bash
+  python3 scripts/gen_natives_page.py             # write docs/api-reference.md
+  python3 scripts/gen_natives_page.py --check     # fail if an entry has no doc block
+  python3 scripts/gen_natives_page.py --selftest  # parser fixtures, JavaDoc and pawndoc
+  ```
+
+  Both comment formats are understood: JavaDoc (`@param`, `@return`) and
+  pawndoc (`<summary>`, `<param name="">`, `<returns>`). The includes here use
+  JavaDoc; pawndoc is covered because a project is likely to pull in includes
+  that use it.
+
 - **Pawn sources are pure ASCII.** No accents, no typographic dashes, no curly
   quotes — the compiler reads bytes, and mojibake reaches the player instead of
   failing the build. Markdown is the exception, and the CI guard enforces the

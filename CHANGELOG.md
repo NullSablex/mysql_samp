@@ -50,6 +50,7 @@ Built on rust-samp v3.5.0, now from crates.io. Additive on the Pawn side: four n
 - **rust-samp moves from a git tag to crates.io** (`version = "3.5.0"`). This also clears a long-standing oddity: the `v3.5.0` tag declared `version = "3.4.0"` in its own manifest, so the lockfile recorded 3.4.0 pointing at the v3.5.0 tag. The SDK's new `mainthread` module is **not** adopted yet: its `post` takes a closure with no parameters and there is no route to plugin state from a worker thread, so the plugin's own `mpsc` channel stays until `post_with` / `post_with_amx` land.
 
 - **`mysql` 28.0.0 → 28.0.2**, plus a large round of transitive updates. (#38, #45, and the Dependabot group)
+- Routine dependency and action bumps: the `github-actions` group in three rounds, `pymdown-extensions` in the docs requirements, and the cargo group — `lru`, `sha1`, `num-bigint`, `wasip2`, `windows-sys` and `derive_utils` among them. (#39, #40, #44–#54)
 
 ### CI / tooling
 
@@ -62,6 +63,14 @@ Built on rust-samp v3.5.0, now from crates.io. Additive on the Pawn side: four n
 - **Community files the repository was missing**: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, issue templates and a pull request template. `SECURITY.md` was added with a private reporting channel and later corrected — its "supported versions" table listed ranges that matched no actual release, and is now one sentence pointing at the releases page. (#57, #58)
 
 ### Documentation
+
+- **The API reference is generated from the includes.** [`api-reference.md`](https://nullsablex.github.io/mysql_samp/api-reference/) was a hand-written set of tables listing every native, its type and a one-line description — the same information the includes already carry beside each declaration, kept in step by hand. It is now produced by `scripts/gen_natives_page.py` on every docs build: natives, the forward, the documented constants and the enumerations with their values, each with its signature, its open.mp alias, its parameters and its return. The page keeps its URL, and the hand-maintained copy is gone. Two comment formats are read: JavaDoc, which the includes here use, and pawndoc (`<summary>`, `<param name="">`, `<returns>`), which a project is likely to meet in includes it pulls in. A `--selftest` covers both against fixtures, and `--check` fails the docs build if an entry has no documentation block.
+
+- **`@example` in a doc block becomes a code block on the page**, and the three natives that accept `MYSQL_SYNC` now carry one, so how to make a call blocking is visible where the native is documented instead of only on the queries page. Native names inside comments are rewritten when the open.mp include is generated, so the same example reads `mysql_query` in one file and `MySQL_Query` in the other.
+
+- **The documentation site carries a database icon** in the header and in the browser tab, in place of the theme's default cloud. The SVG is committed rather than pulled from the theme at build time, so a theme update cannot change it underneath.
+
+- **The includes say more where it counts.** The two prepared-statement natives state that they do not accept `MYSQL_SYNC` rather than leaving it unsaid, and `MYSQL_SAMP_VERSION` carries a doc block explaining that `build.rs` stamps it from `Cargo.toml` and that comparing it at start-up is how a gamemode catches an include left behind by an upgrade. Both reach an editor's hover as well as the page.
 
 - **The callback is optional, and the docs now say so where people read.** Nothing forces a callback on a write: `mysql_query(conn, "UPDATE …")` is one line. That was documented in a subsection at the bottom of one page while the opening sentence and all eleven examples implied the opposite, which is where the complaint that the plugin "makes you write callbacks for everything" came from. (#55)
 

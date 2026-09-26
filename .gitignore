@@ -3,8 +3,11 @@
 CLAUDE.md
 /dist
 /reference
+/notes
 
 # MkDocs
 /site
+# Built from the includes on every docs build; see scripts/gen_natives_page.py
+/docs/api-reference.md
 /.venv
 __pycache__/
