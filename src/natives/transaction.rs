@@ -110,6 +110,10 @@ impl MysqlPlugin {
             return false;
         };
 
+        if callback == crate::natives::query::SYNC_CALLBACK {
+            return self.reject_sync("mysql_transaction_execute", conn_id);
+        }
+
         let callback_info = if callback.is_empty() {
             None
         } else {

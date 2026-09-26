@@ -107,6 +107,8 @@ Setting only one of the two logs a warning and the client certificate is ignored
 
 `MYSQL_OPT_SSL` has no effect when the host is a unix socket (a path starting with `/`) — there is nothing to encrypt on a local socket. Use a TCP host: a hostname, an IPv4 address, or an IPv6 address in brackets (`[::1]`).
 
+A loopback TCP host such as `127.0.0.1` stays on TCP when TLS is on. The driver would otherwise move a loopback connection to the server's unix socket after the handshake, quietly dropping the encryption; asking for TLS switches that optimisation off. Verify it rather than assume it — [`mysql_tls_active`](connection.md#mysql_tls_active) reports what the handshake settled on.
+
 #### Disabling verification
 
 ```pawn
@@ -116,6 +118,51 @@ mysql_options_set_int(opts, MYSQL_OPT_SSL_VERIFY_CERT, 0);  // dangerous
 This accepts **any** certificate and skips the hostname check. Traffic stays encrypted, but an attacker who can intercept the connection can present their own certificate and read or alter every query — which is exactly what TLS is supposed to prevent. It logs a warning on every connect.
 
 Reach for `MYSQL_OPT_SSL_CA` instead: pointing at the CA file is the correct fix for a self-signed server, and it keeps verification intact.
+
+## Memory limits
+
+The options above configure a connection. These configure the plugin, and they
+are global for the same reason: the memory being protected is the server's, and
+every connection shares it.
+
+```pawn
+native bool:mysql_limit_set(limit, value);
+native mysql_limit_get(limit);
+```
+
+| Constant | Default | Caps |
+|---|---|---|
+| `MYSQL_LIMIT_SAVED_CACHES` | 1024 | Caches held by `cache_save` at once |
+| `MYSQL_LIMIT_RESULT_ROWS` | 100000 | Rows a single result set may carry |
+| `MYSQL_LIMIT_ORM_STRING_LEN` | 4096 | Bytes an ORM string variable may bind |
+
+They exist so a gamemode cannot exhaust the server's memory by accident — a
+query that matches a million rows, a loop that saves a cache every tick. The
+defaults suit an ordinary game server; raise one when a job legitimately needs
+more, lower one to be stricter.
+
+```pawn
+// A report that genuinely reads a large table.
+mysql_limit_set(MYSQL_LIMIT_RESULT_ROWS, 500000);
+
+// Back to the default when it is done.
+mysql_limit_set(MYSQL_LIMIT_RESULT_ROWS, 100000);
+```
+
+Things worth knowing:
+
+- **A value must be positive.** `0` is refused rather than read as "unlimited",
+  because a cap of zero would refuse every save and every query — and
+  unlimited is the state these exist to prevent. The native returns `false`
+  and logs why, leaving the cap as it was.
+- **Hitting the row cap truncates, it does not fail.** The query succeeds, the
+  cache holds the first N rows and a warning names the cap. A script that must
+  distinguish "all of it" from "the first N" should count with SQL.
+- **Lowering a cap keeps what is already held.** Existing saved caches stay;
+  the next `cache_save` over the new limit is the one refused. Nothing is
+  thrown away mid-round.
+- **`mysql_limit_get` reads the current value**, which is how a script restores
+  what it changed instead of hardcoding the default.
 
 ## Setting a string option on an int-only option (or vice-versa)
 

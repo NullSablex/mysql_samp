@@ -47,7 +47,7 @@ Coverage of the MySQL R41-4 (BlueG / maddinat0r) Pawn API by **mysql_samp**. Sou
 | `mysql_query` | Yes (sync) | Yes (non-blocking, FIFO) | Always threaded — replaces `tquery` |
 | `mysql_tquery` | Yes | — | Subsumed by `mysql_query` (which is already non-blocking) |
 | `mysql_pquery` | Yes | Yes | Parallel, no ordering guarantee |
-| `mysql_query_file` | Yes | Yes | Non-blocking, like every query here. Not transactional — see the note in [Queries](docs/queries.md) |
+| `mysql_query_file` | Yes | Yes | Non-blocking by default, or blocking with `MYSQL_SYNC`. Not transactional — see the note in [Queries](docs/queries.md) |
 | `mysql_tquery_file` | Yes | — | Subsumed by `mysql_query_file`, which is already non-blocking |
 
 ## Cache
@@ -144,23 +144,26 @@ Coverage of the MySQL R41-4 (BlueG / maddinat0r) Pawn API by **mysql_samp**. Sou
 | Prepared statements | `mysql_stmt_*` — values bound server-side over the binary protocol, immune to injection |
 | Transactions | `mysql_transaction_*` — atomic batch, rolls back on any failing step |
 | Argon2id password hashing | `mysql_hash_password` / `mysql_verify_password`, threaded; PHC output with embedded salt |
-| TLS | rustls compiled in (`rustls-tls-ring`), CA / mutual TLS / verification toggle |
+| TLS | rustls compiled in (`rustls-tls-ring`), CA / mutual TLS / verification toggle. A TLS connection is never downgraded to a unix socket |
+| Configurable memory caps | `mysql_limit_set` / `mysql_limit_get` — saved caches, result rows and ORM string length |
+| TLS diagnostics | `mysql_tls_active` / `mysql_tls_cipher` — what the handshake settled on, not what was asked for |
 | Detailed file logs | `logs/mysql.log` with timestamp, 50 MB rotation into gzipped `logs/archive/`, and `MYSQL_SAMP_LOG_*` env overrides |
 | Build banner | Date/time stamped by `build.rs` via `BUILD_DATE` / `BUILD_TIME` / `BUILD_YEAR` |
 | Connection pool | `mysql::Pool` (`Clone + Send + Sync`) for safe multi-threaded access |
-| Fully non-blocking queries | Both `mysql_query` (FIFO) and `mysql_pquery` (parallel) run on worker threads |
+| Non-blocking queries by default | Both `mysql_query` (FIFO) and `mysql_pquery` (parallel) run on worker threads |
+| Opt-in blocking, per call | `MYSQL_SYNC` in the callback slot blocks that one call; refused inside a callback, and on every native that could not honour it |
 | ORM auto-cleanup | `OrmManager::destroy_by_amx` frees instances when their AMX is unloaded |
 | Universal SA-MP + Open Multiplayer binary | The same `.so` / `.dll` runs natively (component) or in legacy mode (`legacy_plugins`) |
 | Unified `on_tick` | Dispatches callbacks via `ProcessTick` (SA-MP) and `ITimersComponent` (Open Multiplayer native), no Pawn `SetTimer` required |
 | `mysql_format` safe truncation | Truncates at the destination buffer boundary respecting UTF-8 char boundaries; warns once per call |
 | Strict integer conversions | Every cross-width / sign-changing conversion goes through `TryFrom` / `From`; no silent wrap from `as` |
-| 167 unit tests | Cover the entire pure surface (parser, renderer, escape modes, placeholder scanner, cache, ORM, statements, transactions, Argon2id) |
+| 190 unit tests | Cover the entire pure surface (parser, renderer, escape modes, placeholder scanner, cache, ORM, statements, transactions, Argon2id) |
 
 ## Totals
 
 | Category | R41-4 | mysql_samp |
 |---|---|---|
-| Pawn natives | — | **75** |
+| Pawn natives | — | **79** |
 | Pawn forwards | — | **1** |
 | Plugin error codes (`MYSQL_ERROR_*`) | — | 9 (`MYSQL_OK` + 8) |
 | Connection options (`MYSQL_OPT_*`) | many | 9 (all wired) |

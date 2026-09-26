@@ -30,7 +30,7 @@ Remove every `MySQL:`, `Cache:`, `ORM:`, `MySQLOpt:`, `E_ORM_ERROR:` and `E_MYSQ
 
 | R41-4 | mysql_samp | Notes |
 |---|---|---|
-| `Cache:mysql_query(handle, query, use_cache)` | *removed* | The sync version blocked the server tick — removed by design |
+| `Cache:mysql_query(handle, query, use_cache)` | `mysql_query(connId, query, MYSQL_SYNC)` | No longer a native of its own, since one that exists gets copied into player callbacks. Writing `MYSQL_SYNC` where the callback goes blocks that one call and leaves the result readable on the next line, which is the R41-4 shape. Refused inside a callback |
 | `mysql_tquery(handle, query, cb, fmt, ...)` | `mysql_query(connId, query, cb, fmt, ...)` | Same behavior (threaded, FIFO) |
 | `mysql_pquery(handle, query, cb, fmt, ...)` | `mysql_pquery(connId, query, cb, fmt, ...)` | Same behavior (threaded, no order) |
 | `mysql_query_file(file)` / `mysql_tquery_file(file)` | *removed* | Not supported |

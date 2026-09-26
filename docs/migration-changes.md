@@ -61,11 +61,11 @@ mysql_query(g_mysql, query, "OnLoad", "i", playerid);
 
 | R41-4 | mysql_samp | Behavior |
 |---|---|---|
-| `Cache:mysql_query(handle, query, use_cache)` | *removed* | The synchronous version blocked the server tick |
+| `Cache:mysql_query(handle, query, use_cache)` | `mysql_query(connId, query, MYSQL_SYNC)` | Blocking is opt-in per call instead of a native of its own |
 | `mysql_tquery(handle, query, cb, fmt, ...)` | `mysql_query(connId, query, cb, fmt, ...)` | Threaded, FIFO ordering (same as before) |
 | `mysql_pquery(handle, query, cb, fmt, ...)` | `mysql_pquery(connId, query, cb, fmt, ...)` | Threaded, no order (same as before) |
 
-Every query is now non-blocking. The cache is only valid inside the callback (or after `cache_set_active` on a saved id).
+Every query is non-blocking unless the call is given `MYSQL_SYNC`. With a callback the cache is valid inside it; with `MYSQL_SYNC` it is valid for the rest of the frame; either way `cache_save` keeps it longer.
 
 ## Connection
 

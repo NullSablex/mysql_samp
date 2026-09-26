@@ -4,6 +4,80 @@ All notable changes to this project are documented in this file.
 
 Format inspired by [Keep a Changelog](https://keepachangelog.com/). Versioning follows [Semantic Versioning](https://semver.org/). Older entries live under [`changelog/`](changelog/).
 
+## [1.4.0] — 2026/10/04
+
+Built on rust-samp v3.5.0, now from crates.io. Additive on the Pawn side: four natives and one constant are new, nothing was removed or renamed, so 1.3.0 gamemodes compile unchanged. **One behaviour did change** — `OnQueryError` used to hand its arguments over in the wrong order, and now hands them over as the forward declares. Read the first entry under Fixed before upgrading if you handle that forward.
+
+### Added
+
+- **`MYSQL_SYNC` — one call blocks, on purpose.** Everything stays non-blocking by default. Writing `MYSQL_SYNC` where the callback name goes makes *that* call wait for the database and leaves the result readable on the next line, with no forward and no public:
+
+  ```pawn
+  mysql_query(g_sql, "SELECT COUNT(*) AS n FROM accounts", MYSQL_SYNC);
+  new total = cache_get_value_name_int(0, "n");
+  ```
+
+  It is a value and not a native because a native called `mysql_query_sync` gets copied into `OnPlayerUpdate`; a value written at the call site states the intent where the cost is paid. It could not be a new argument either: Pawn refuses any parameter after `{Float,_}:...`, and putting one before the callback would break every existing call.
+
+  The rules that keep it honest: **refused inside a callback**, where "the current cache" already means the callback's own and a blocking result would either shadow it or be unreadable; **freed at the next server tick**, the same guarantee the threaded path gets from its callback returning, so nothing has to be freed by hand; and **refused, out loud, on every native that cannot honour it** — prepared statements, transactions, the ORM and password hashing — because otherwise the value would pass for a callback name that never fires and the call would silently become fire-and-forget. Supported on `mysql_query`, `mysql_pquery` and `mysql_query_file`, which is where schema work at start-up lives.
+
+- **`mysql_tls_active(connId)` and `mysql_tls_cipher(connId, dest[], max_len)`** — what the handshake actually settled on, rather than what `MYSQL_OPT_SSL` asked for. Both read a value captured once when the connection opened, so neither costs a query. An unencrypted session writes an empty cipher and returns `false`: that is the answer, and the return value separates it from an unknown connection id.
+
+- **`mysql_limit_set(limit, value)` and `mysql_limit_get(limit)`** — the three memory caps stop being hardcoded. `MYSQL_LIMIT_SAVED_CACHES` (1024), `MYSQL_LIMIT_RESULT_ROWS` (100000) and `MYSQL_LIMIT_ORM_STRING_LEN` (4096) can be raised by a job that genuinely needs more or lowered on a tight machine. Global rather than per connection, because the memory being protected is the server's. A value must be positive: `0` is refused rather than read as "unlimited", since unlimited is the state these exist to prevent, and lowering a cap keeps what is already held instead of discarding a gamemode's data mid-round.
+
+- **`${NAME}` in the connection file.** `mysql_connect_file` already kept the password out of the gamemode; now the file can name the secret instead of holding it, so a stolen copy is worth nothing on its own:
+
+  ```ini
+  password = ${MYSQL_PASSWORD}
+  ```
+
+  An unset name expands to nothing and logs which one was missing — sending the literal `${MYSQL_PASSWORD}` would fail as "access denied" and send the operator looking in the wrong place. Only `${...}` is a reference, so a password containing a dollar sign keeps working.
+
+### Fixed
+
+- **`OnQueryError` delivered its five arguments in reverse.** The forward is declared `OnQueryError(errorid, error[], callback[], query[], connId)`, and a gamemode received the connection id as `errorid`, the query text as `error`, the error message as `query`, and the MySQL code as `connId`. The cause was in the dispatch: `exec_public!` pushes its arguments in reverse — the AMX stack convention — so the order listed in the call is the order the public receives, and the code listed them backwards as if it had to invert them by hand. Present since 1.0.0. **Anyone handling this forward was reading the wrong fields and should check their handler.** (#56)
+
+- **Requesting TLS on a loopback host ran in plaintext.** `MYSQL_OPT_SSL = 1` against `127.0.0.1` reported success while `Ssl_cipher` came back empty. The driver's `prefer_socket` defaults to true and, after the handshake, moves a *loopback* connection onto the server's unix socket — where it secures nothing. The two conditions met on the most ordinary local setup there is. Asking for TLS now switches that optimisation off; without TLS it stays, which is where it helps. Verified against MariaDB 11.8: `TLS_AES_256_GCM_SHA384` where there used to be an empty string.
+
+- **`rustls` 0.23.43 → 0.23.45 (RUSTSEC-2026-0285).** TLS 1.3 handshake messages were accepted across encryption level boundaries. The transcript stays authenticated, so a network attacker cannot alter or complete a handshake; the practical effect is a peer being able to send in cleartext what should have been encrypted without rustls refusing. (#41)
+
+- **Driver errors reached Pawn with Rust internals attached.** A missing table arrived as `MySqlError { ERROR 1146 (42S02): Table 'db.t' doesn't exist }` — the variant name wrapping the server's own message. Both the query path and the connection path now pass the server's message through on its own. (#56 and this release)
+
+- **`mysql_query_file` failed without telling the caller.** An unreadable file or one with no statements was a log line and a `false` return — which the callback-free form, the one the documentation recommends for schema, never sees. It now also fires `OnQueryError`, with the path in place of the query so the message names the file, and `errorid` `0`, as documented for a failure that never reached the server. (#56)
+
+### Changed
+
+- **rust-samp moves from a git tag to crates.io** (`version = "3.5.0"`). This also clears a long-standing oddity: the `v3.5.0` tag declared `version = "3.4.0"` in its own manifest, so the lockfile recorded 3.4.0 pointing at the v3.5.0 tag. The SDK's new `mainthread` module is **not** adopted yet: its `post` takes a closure with no parameters and there is no route to plugin state from a worker thread, so the plugin's own `mpsc` channel stays until `post_with` / `post_with_amx` land.
+
+- **`mysql` 28.0.0 → 28.0.2**, plus a large round of transitive updates. (#38, #45, and the Dependabot group)
+
+### CI / tooling
+
+- **Dependabot now tracks transitive crates** (`allow: dependency-type: all`). Almost nothing the plugin ships is in `Cargo.toml` — `rustls` arrives through `mysql`, like most of the lockfile — so the default of watching only the manifest is what let RUSTSEC-2026-0285 sit there until an unrelated pull request went red. A patched version now arrives as an ordinary lockfile bump and goes through `cargo audit` on the way in. A second group exists because a group applies to version updates unless it says `applies-to: security-updates`. (#43)
+
+- **The security audit also runs weekly**, and on that schedule `rustsec/audit-check` opens an issue instead of failing a pull request. An advisory published against a crate already in the lockfile arrives on the RustSec database's clock, not on ours; waiting for someone to open a PR turned that into a red check on whoever happened to be there. (#41, #43)
+
+- **Two tests that pin what used to be invisible.** `tests/inc_natives.rs` compares the `initialize_plugin!` list against the include in both directions, so a native registered but never declared — which builds fine and is simply unreachable from Pawn — fails the build instead. `tests/inc_encoding.rs` keeps the includes pure ASCII. rust-samp 3.5.0 can also emit the authoritative list at runtime with `SAMP_PAWN_INCLUDE=/path.inc`, which is how the comparison was checked by hand: 58 declarations plus 17 commented `raw` ones, matching the 75 the include declared.
+
+- **Community files the repository was missing**: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, issue templates and a pull request template. `SECURITY.md` was added with a private reporting channel and later corrected — its "supported versions" table listed ranges that matched no actual release, and is now one sentence pointing at the releases page. (#57, #58)
+
+### Documentation
+
+- **The callback is optional, and the docs now say so where people read.** Nothing forces a callback on a write: `mysql_query(conn, "UPDATE …")` is one line. That was documented in a subsection at the bottom of one page while the opening sentence and all eleven examples implied the opposite, which is where the complaint that the plugin "makes you write callbacks for everything" came from. (#55)
+
+- **FIFO orders callbacks, not execution.** `mysql_query` dispatches callbacks in submission order, but each statement runs on its own connection, concurrently — a `CREATE TABLE` followed by an `INSERT` races and the insert fails. The comparison table recommended `mysql_query` for exactly that. It now points at `mysql_query_file` and transactions, the two things that actually serialise, and two examples were added for the callback-free and ordering cases. (#55)
+
+- **Things the plugin guarantees that were never written down**: that `mysql_connect` blocks (≈10 ms locally, ≈70 ms with TLS) while every query does not; that TLS fails closed, so a server without encryption fails the connect instead of continuing in the clear; that `mysql_query_file` resolves its path against the server's working directory and not `scriptfiles/`; and that binary columns cannot travel in a Pawn string — a `VECTOR` reads back empty because its bytes start with a zero, so `VEC_ToText()` and `HEX()` are the way through.
+
+- **IPv6 is supported, in brackets.** `[::1]` is parsed and validated as an address; without brackets it is taken as a host name, which usually still connects but validates nothing. (#42)
+
+### Known advisories
+
+Both are informational, neither is resolvable here, and both are pinned behind the `mysql` crate:
+
+- **RUSTSEC-2025-0134** — `rustls-pemfile` is unmaintained. The code that runs is the maintained `rustls-pki-types`; upstream still depends on the wrapper, so there is not even an unreleased fix to wait for.
+- **RUSTSEC-2026-0253** — `lru` is unsound in `LruCache::pop` if a key's `Drop` panics. The cache keys here are strings and integers, whose `Drop` does not panic. Upstream merged the bump to `lru` 0.18.2 on 2026/09/21 but has not released it; `mysql` still requires `0.16`, which a `cargo update` cannot cross.
+
 ## [1.3.0] — 2026/09/07
 
 Built on rust-samp v3.5.0. Additive release: no Pawn native was removed or renamed, so 1.2.0 gamemodes compile unchanged.

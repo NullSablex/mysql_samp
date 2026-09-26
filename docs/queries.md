@@ -1,6 +1,13 @@
 # Queries
 
-Every query in mysql_samp is **non-blocking**: the statement runs on a worker thread and the result reaches your script on a later tick. The server never freezes waiting for the database.
+Every query in mysql_samp is **non-blocking by default**: the statement runs on a worker thread and the result reaches your script on a later tick, so the server does not freeze waiting for the database.
+
+Two things do block, and both are deliberate and named:
+
+- [`mysql_connect`](connection.md#mysql_connect) waits for the handshake, which is why it belongs in `OnGameModeInit` and not in a player callback.
+- A call that is given [`MYSQL_SYNC`](#mysql_sync--making-one-call-block-on-purpose) in place of a callback name blocks on purpose, for the cases where waiting is worth more than the tick — schema at start-up, a migration, a one-off command.
+
+Nothing blocks unless you wrote one of those two, and the second one says so at the call site.
 
 **The callback is optional.** Non-blocking does not mean "you have to write a callback for everything" — every native on this page takes `callback` with a default of `""`, and passing nothing means fire-and-forget:
 
@@ -99,6 +106,76 @@ mysql_query(g_mysql, "UPDATE players SET last_login = NOW() WHERE id = 1");
 ```
 
 A failure still fires `OnQueryError`.
+
+## MYSQL_SYNC — making one call block, on purpose
+
+There is no synchronous native, and there will not be one: a native named
+`mysql_query_sync` is copied around a gamemode until something blocks inside
+`OnPlayerUpdate`. What exists instead is a value you write **where the callback
+name goes**, which turns that one call — and only that one — into a blocking
+call:
+
+```pawn
+mysql_query(g_mysql, "SELECT COUNT(*) AS n FROM accounts", MYSQL_SYNC);
+new total = cache_get_value_name_int(0, "n");
+```
+
+The call returns when the database answers, and the result is the current cache
+on the very next line. No forward, no public, and the value is available in the
+same scope that asked for it.
+
+### When it is worth it
+
+Only when nobody is online to feel it, and the alternative is worse:
+
+- **Schema and migrations at start-up.** The strongest case, because each
+  statement depends on the previous one having finished, and threaded calls run
+  concurrently:
+
+  ```pawn
+  public OnGameModeInit()
+  {
+      g_mysql = mysql_connect(...);
+      mysql_query_file(g_mysql, "schema.sql", MYSQL_SYNC);
+      // From here on the tables exist. No callback chain, no race.
+      return 1;
+  }
+  ```
+
+- **A one-off console or admin command** where reading the answer inline keeps
+  the code honest and the freeze is a few milliseconds.
+
+### When it is wrong
+
+**Never in anything that runs per player or per tick.** `OnPlayerConnect`,
+`OnPlayerText`, a timer: the whole server stops for as long as the database
+takes. On a local database that is a few milliseconds; on a remote one, or one
+under load, it is the difference between a server and a slideshow. A query that
+takes 2 s costs every player 2 s — measured, not estimated.
+
+### The rules
+
+- **It is refused inside a callback.** There, the current cache already belongs
+  to the callback, and a blocking result would either shadow it or be
+  unreadable — both surprises. The call is not run, `false` comes back and the
+  reason is logged. Run it before the callback, or use a threaded call.
+- **The result lives for the current frame.** It is freed on the next server
+  tick, the same way a threaded result is freed when its callback returns.
+  Read it on the lines right after the call — which is the whole point — and
+  use `cache_save()` if it has to last longer. Nothing to free by hand: the
+  plugin does not ask you to remember a `cache_delete`, and this does not
+  become the exception.
+- **One at a time within the frame.** A second blocking call replaces the
+  first, and `cache_unset_active()` drops it early.
+- **Errors behave the same as threaded ones.** `false` comes back,
+  `mysql_errno` is set and `OnQueryError` fires, with `MYSQL_SYNC` as the
+  callback name so the handler can tell where it came from.
+- **Supported on `mysql_query`, `mysql_pquery` and `mysql_query_file`.** On
+  `mysql_pquery` it behaves exactly like `mysql_query`, since a blocking call
+  has nothing to run in parallel with. Everywhere else — prepared statements,
+  transactions, the ORM, password hashing — it is refused with a message
+  naming what to use instead, so it can never be mistaken for a callback that
+  silently never fires.
 
 ## mysql_pquery — parallel, no ordering
 
@@ -273,6 +350,8 @@ native bool:mysql_query_file(connId, const path[], const callback[] = "", const 
 ```
 
 Reads a file and runs its statements in order on one connection, non-blocking like every other query here. Useful for schema setup and migrations.
+
+The path is resolved against the **server's working directory** — the folder holding `samp03svr` or `omp-server` — not against `scriptfiles/`. A path that does not resolve reaches `OnQueryError` with the name it tried, and `errorid` `0`, since nothing was sent to the server.
 
 ```pawn
 mysql_query_file(g_mysql, "scripts/schema.sql", "OnSchemaReady");

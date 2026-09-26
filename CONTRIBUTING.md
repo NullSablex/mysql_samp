@@ -63,7 +63,21 @@ greps for errors reports success for a file that never compiled.
   every build; a change made there disappears.
 - **A new native touches four places:** the file under `src/natives/`, the list
   in `src/lib.rs`, the declaration in the `.inc.in` (in its section, with a
-  JavaDoc block) and an example that calls it.
+  JavaDoc block) and an example that calls it. `tests/inc_natives.rs` compares
+  the first two against the include and fails when they drift, so a forgotten
+  declaration stops the build instead of becoming a native Pawn cannot reach.
+
+  To see the list the plugin actually registers, start a server with
+
+  ```bash
+  SAMP_PAWN_INCLUDE=/tmp/generated.inc ./samp03svr
+  ```
+
+  and rust-samp writes a declaration for every `#[native]`. The ones declared
+  `raw` — our variadic natives — come out commented, since their arity is not
+  in the signature. It is a cross-check by hand, not a replacement for the
+  `.inc.in`, which carries the Pawn tags, the enums and the JavaDoc that the
+  generated file has no way to know about.
 - **Pawn sources are pure ASCII.** No accents, no typographic dashes, no curly
   quotes — the compiler reads bytes, and mojibake reaches the player instead of
   failing the build. Markdown is the exception, and the CI guard enforces the

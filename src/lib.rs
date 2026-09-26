@@ -3,6 +3,7 @@ mod callback;
 mod config;
 mod connection;
 mod error;
+mod limits;
 mod logger;
 mod natives;
 mod options;
@@ -24,6 +25,12 @@ initialize_plugin!(
         MysqlPlugin::mysql_connect_file,
         MysqlPlugin::mysql_close,
         MysqlPlugin::mysql_status,
+        MysqlPlugin::mysql_tls_active,
+        MysqlPlugin::mysql_tls_cipher,
+
+        // Limits
+        MysqlPlugin::mysql_limit_set,
+        MysqlPlugin::mysql_limit_get,
         // Options
         MysqlPlugin::mysql_options_new,
         MysqlPlugin::mysql_options_set_int,

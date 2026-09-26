@@ -108,17 +108,23 @@ Both natives are non-blocking, and both return `false` if the work queue is satu
 
 TLS was checked against a real MariaDB 11.8, not just by reading code: the server's completed-handshake counter advances for each connection, and with verification at its default a self-signed certificate is rejected outright (`invalid peer certificate: UnknownIssuer`) instead of quietly falling back to plaintext.
 
+**Asking for TLS fails closed.** If the server does not offer encryption, the driver returns `TlsNotSupported` and the connect fails: `mysql_connect` gives back `0`. It never continues in plaintext on a connection that asked to be encrypted, so `MYSQL_OPT_SSL` is a requirement and not a preference.
+
 One limitation worth knowing: **TLS is not available over a unix socket.** A host starting with `/` connects over a socket, where there is nothing to encrypt and `MYSQL_OPT_SSL` has no effect. Use a TCP host if you need encryption.
+
+A loopback TCP host is a TCP host and stays encrypted. The driver would normally move a loopback connection onto the server's socket once the handshake is done — dropping the encryption with it — and asking for TLS switches that off. Until 1.3.x it did not, so `MYSQL_OPT_SSL` against `127.0.0.1` ran in plaintext while reporting success. Confirm rather than assume, with [`mysql_tls_active`](connection.md#mysql_tls_active).
 
 > Plugin versions before 1.2.0 accepted `MYSQL_OPT_SSL` but shipped no TLS backend at all, so connections were never encrypted. If you relied on it, treat those credentials as exposed.
 
 ## Resource limits
 
-| Resource | Limit | Why |
+| Resource | Default | Why |
 |---|---|---|
 | Saved caches | 1 024 | Prevents memory growth from misused `cache_save` (CWE-770) |
 | Rows per single result | 100 000 | Caps the worst-case allocation for a single query (CWE-770) |
 | `orm_addvar_string` `max_len` | 1..=4 096 | Bounds the size of writes into the AMX heap when `orm_apply_cache` copies a column (CWE-787) |
+
+These are defaults, not hard ceilings: [`mysql_limit_set`](options.md#memory-limits) raises or lowers each one. A script can therefore widen a cap it genuinely needs — and can also narrow one. What it cannot do is remove a cap: zero is refused, and there is no "unlimited" value.
 
 When a limit is hit:
 

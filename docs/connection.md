@@ -16,7 +16,20 @@ native mysql_connect(const host[], const user[], const password[], const databas
 | `database` | string | Default schema for the connection |
 | `options` | int | Options handle from `mysql_options_new`. `0` means "use defaults" |
 
-**Returns:** the connection id (`>= 1`) on success, `0` on failure. On failure the global error state is populated and `mysql_errno(0)` / `mysql_error(0, …)` describe the cause.
+**Returns:** the connection id (`>= 1`) on success, `0` on failure.
+
+!!! warning "This one native does block"
+
+    Every *query* in the plugin is non-blocking, but `mysql_connect` is not:
+    it opens a connection and waits for the handshake before returning the id.
+    Measured against a local MariaDB it costs around 10 ms, and around 70 ms
+    with TLS; a database on another host, or one that is not answering, costs
+    whatever the network and `MYSQL_OPT_CONNECT_TIMEOUT` say.
+
+    That is fine where it belongs — `OnGameModeInit`, before anyone is
+    connected. It is not fine in a player callback: reconnecting there freezes
+    every player for as long as the handshake takes. Connect once at startup
+    and keep the id. On failure the global error state is populated and `mysql_errno(0)` / `mysql_error(0, …)` describe the cause.
 
 ### TCP example
 
@@ -61,6 +74,41 @@ Two things to know:
 
 - **The server has to be listening on IPv6.** MySQL binds IPv4 only by default; it needs `bind-address = ::` (or a specific IPv6 address) in the server configuration. A refused connection to `[::1]` is usually this, not the plugin.
 - **TLS to an IP literal needs a certificate issued for that IP** (an `iPAddress` entry in the certificate's SAN), which is uncommon — certificates are normally issued for names. If you use `MYSQL_OPT_SSL` with certificate verification on, connect by hostname, or expect verification to fail.
+
+## mysql_tls_active
+
+```pawn
+native bool:mysql_tls_active(connId);
+```
+
+Whether the session is encrypted, as the handshake settled it — not whether
+`MYSQL_OPT_SSL` was asked for. The option is the request; this is the answer.
+
+## mysql_tls_cipher
+
+```pawn
+native bool:mysql_tls_cipher(connId, dest[], max_len = sizeof(dest));
+```
+
+Writes the cipher suite the session negotiated, for example
+`TLS_AES_256_GCM_SHA384`. An unencrypted session writes an empty string and
+returns `false` — that is the answer, not an error; the return value is what
+separates it from an unknown connection id.
+
+Both read a value captured once, on the connection the handshake opened, so
+neither costs a query.
+
+```pawn
+new cipher[64];
+if (mysql_tls_cipher(g_mysql, cipher))
+    printf("[MySQL] encrypted with %s", cipher);
+else
+    print("[MySQL] NOT encrypted");
+```
+
+Worth checking at startup on a server that is supposed to require TLS: a
+misconfiguration that leaves the session in plaintext looks exactly like a
+working connection from every other angle.
 
 ### Unix socket
 
@@ -125,6 +173,38 @@ Format:
 - Only the first `=` splits the line, so a password may contain `=`.
 - `host`, `user` and `database` are required. `password` may be absent or empty — a local socket account often has none.
 - Unknown keys are ignored, so a file shared with another tool still works.
+- `${NAME}` in a value is replaced by that environment variable.
+
+### Keeping the secret out of the file as well
+
+`mysql_connect_file` keeps the password out of the gamemode. `${NAME}` takes
+the next step and keeps it out of the file, which is what makes a stolen copy
+of the file worth nothing:
+
+```ini
+host     = 127.0.0.1
+user     = samp
+password = ${MYSQL_PASSWORD}
+database = samp_server
+```
+
+The operator exports `MYSQL_PASSWORD` once — in the service unit, the shell
+that starts the server, or the container's environment — and the file only
+names the secret.
+
+- **An unset name expands to nothing** and logs which name was missing. Sending
+  the literal `${MYSQL_PASSWORD}` to the server instead would fail with a
+  confusing "access denied"; an empty password fails for a reason you can read.
+- **A bare `$NAME` is left alone**, so a password that contains a dollar sign
+  keeps working. Only `${...}` is a reference.
+- **It works in any value**, not just the password, and more than one fits in
+  the same value.
+
+This is worth more than encrypting the file. A key that the server must be able
+to read at startup has to live somewhere the server can reach, so an encrypted
+file plus its key is the same secret in two pieces. Naming an environment
+variable removes the secret from the repository and from the deployed files
+outright.
 
 Connection **options** are not part of the file — they stay with `mysql_options_new` and the second parameter, so there is one place to look for tuning:
 

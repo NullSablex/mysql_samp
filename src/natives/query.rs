@@ -10,6 +10,14 @@ use crate::logger::Logger;
 use crate::plugin::MysqlPlugin;
 use crate::query::{CallbackInfo, CallbackParam};
 
+/// The value a script writes where the callback goes to make one call block.
+///
+/// A string rather than a new native, and a string no Pawn `public` can be
+/// named - identifiers cannot contain `!` - so it cannot collide with a real
+/// callback and cannot be produced by accident. Declared in the include as
+/// `MYSQL_SYNC`.
+pub const SYNC_CALLBACK: &str = "!sync";
+
 /// Parameters bundled for [`MysqlPlugin::submit_query`].
 /// Groups every value that describes a single query submission so the
 /// internal helper has one data argument instead of seven positional ones.
@@ -113,6 +121,10 @@ impl MysqlPlugin {
 
         let auto_reconnect = self.connections.get_auto_reconnect(req.conn_id);
 
+        if req.callback == SYNC_CALLBACK {
+            return self.run_blocking(&pool, req.query, req.conn_id, auto_reconnect);
+        }
+
         let callback_info = if req.callback.is_empty() {
             None
         } else {
@@ -143,6 +155,150 @@ impl MysqlPlugin {
         }
 
         true
+    }
+
+    /// Refuses `MYSQL_SYNC` on a native that does not implement it.
+    ///
+    /// Without this the sentinel would be taken for a callback name, no public
+    /// of that name would exist, and the call would quietly behave as
+    /// fire-and-forget - the script waiting for a blocking call that never
+    /// blocked. Saying no is the only safe answer.
+    pub(crate) fn reject_sync(&mut self, native: &str, conn_id: i32) -> bool {
+        let msg = format!(
+            "{native} does not support MYSQL_SYNC. Blocking calls are available on \
+             mysql_query, mysql_pquery and mysql_query_file; the call was NOT run."
+        );
+        Logger::warn(&msg);
+        self.connections
+            .set_error(conn_id, ErrorState::new(MysqlError::QueryFailed, &msg));
+        false
+    }
+
+    /// Runs a statement on the calling thread and keeps the result.
+    ///
+    /// This is the one path in the plugin that blocks the server: the tick
+    /// stops here until the database answers. It exists because ordering and
+    /// "read the answer on the next line" are sometimes worth more than the
+    /// tick - schema work at start-up, a migration, a one-off console command -
+    /// and it is reached only by writing `MYSQL_SYNC` where the callback goes,
+    /// so no one arrives here by accident.
+    ///
+    /// The result becomes the current cache, replacing the previous blocking
+    /// result. A failure fires `OnQueryError` exactly as the threaded path
+    /// does, so error handling does not have to be written twice.
+    fn run_blocking(
+        &mut self,
+        pool: &mysql::Pool,
+        query: &str,
+        conn_id: i32,
+        auto_reconnect: bool,
+    ) -> bool {
+        // Refused inside a callback, and not out of caution: there, "the
+        // current cache" already means the one the callback was invoked for.
+        // A blocking result would have to either shadow it - breaking every
+        // read after it in the same callback - or be unreadable until the
+        // callback returns. Both are surprises; refusing is not. Every use
+        // this exists for (start-up, a migration, a console command) happens
+        // outside a callback anyway.
+        if self.cache.callback_active() {
+            let msg = "MYSQL_SYNC was used inside a callback, where the active cache already \
+                       belongs to that callback. The query was NOT run. Run it before the \
+                       callback, or use a normal threaded call.";
+            Logger::warn(msg);
+            self.connections
+                .set_error(conn_id, ErrorState::new(MysqlError::QueryFailed, msg));
+            return false;
+        }
+
+        match crate::connection::attempt_query(pool, query, auto_reconnect) {
+            Ok(entry) => {
+                self.cache.set_sync_result(entry);
+                self.connections.set_error(conn_id, ErrorState::ok());
+                true
+            }
+            Err(e) => {
+                let code = i32::from(e.code);
+                Logger::error_detail(
+                    &format!(
+                        "Blocking query failed on connection {conn_id} (error {code}). \
+                         See logs/mysql.log for details."
+                    ),
+                    &format!("Query error: {}", e.message),
+                );
+                self.connections.set_error(
+                    conn_id,
+                    ErrorState::new(MysqlError::QueryFailed, e.message.clone()),
+                );
+                callback::fire_on_query_error(
+                    &self.amx_list,
+                    code,
+                    &e.message,
+                    SYNC_CALLBACK,
+                    query,
+                    conn_id,
+                );
+                false
+            }
+        }
+    }
+
+    /// Runs a whole `.sql` file on the calling thread, statements in order.
+    ///
+    /// Same rules as [`Self::run_blocking`]; the cache left behind is the one
+    /// of the last statement, matching what the threaded path delivers to a
+    /// callback.
+    fn run_blocking_script(
+        &mut self,
+        pool: &mysql::Pool,
+        statements: &[String],
+        path: &str,
+        conn_id: i32,
+    ) -> bool {
+        if self.cache.callback_active() {
+            let msg = "MYSQL_SYNC was used inside a callback, where the active cache already \
+                       belongs to that callback. The script was NOT run.";
+            Logger::warn(msg);
+            self.connections
+                .set_error(conn_id, ErrorState::new(MysqlError::QueryFailed, msg));
+            return false;
+        }
+
+        Logger::info(&format!(
+            "Running {} statement(s) from '{}' synchronously.",
+            statements.len(),
+            path
+        ));
+
+        match crate::connection::attempt_script(pool, statements) {
+            Ok(entry) => {
+                self.cache.set_sync_result(entry);
+                self.connections.set_error(conn_id, ErrorState::ok());
+                true
+            }
+            Err(e) => {
+                let code = i32::from(e.code);
+                Logger::error_detail(
+                    &format!(
+                        "Blocking script '{path}' failed on connection {conn_id} (error {code}). \
+                         See logs/mysql.log for details."
+                    ),
+                    &format!("Script error: {}", e.message),
+                );
+                self.connections.set_error(
+                    conn_id,
+                    ErrorState::new(MysqlError::QueryFailed, e.message.clone()),
+                );
+                callback::fire_on_query_error(
+                    &self.amx_list,
+                    code,
+                    &e.message,
+                    SYNC_CALLBACK,
+                    path,
+                    conn_id,
+                );
+                false
+            }
+        }
     }
 
     /// mysql_query_file(connId, const path[], const callback[] = "", const format[] = "", {Float,_}:...)
@@ -207,6 +363,13 @@ impl MysqlPlugin {
             );
             return false;
         };
+
+        if callback == SYNC_CALLBACK {
+            // The strongest case for blocking there is: schema at start-up,
+            // where the next statement depends on this one having finished
+            // and there is no player to freeze.
+            return self.run_blocking_script(&pool, &statements, &path, conn_id);
+        }
 
         let callback_info = if callback.is_empty() {
             None

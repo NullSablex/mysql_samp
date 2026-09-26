@@ -2,9 +2,6 @@ use std::collections::HashMap;
 
 use crate::logger::Logger;
 
-/// Maximum number of saved caches allowed to prevent memory exhaustion.
-const MAX_SAVED_CACHES: usize = 1024;
-
 /// A single row: Vec of Option<String> where None represents SQL NULL.
 pub type CacheRow = Vec<Option<String>>;
 
@@ -160,6 +157,15 @@ pub struct CacheManager {
     saved: HashMap<i32, CacheEntry>,
     next_saved_id: i32,
     manual_active: Option<i32>,
+    /// Result of the last blocking call, which has no callback to be active
+    /// inside of.
+    ///
+    /// It cannot go on `active_stack`: the stack is balanced by one push per
+    /// callback and one pop when it returns, so an extra push made from inside
+    /// a callback would be popped by that callback and leave the entry below
+    /// it stranded. A slot of its own keeps the stack's invariant intact and
+    /// bounds a blocking call to exactly one live result.
+    sync_active: Option<CacheEntry>,
 }
 
 impl CacheManager {
@@ -169,6 +175,7 @@ impl CacheManager {
             saved: HashMap::new(),
             next_saved_id: 1,
             manual_active: None,
+            sync_active: None,
         }
     }
 
@@ -190,6 +197,14 @@ impl CacheManager {
         if let Some(id) = self.manual_active {
             return self.saved.get_mut(&id);
         }
+        // The stack wins over the blocking slot, and it is non-empty exactly
+        // while a callback is running: inside a callback, "the current cache"
+        // has to be the one the callback was invoked for, even if a blocking
+        // call left a result behind earlier. Outside a callback the stack is
+        // empty and the blocking result is what a read means.
+        if self.active_stack.is_empty() {
+            return self.sync_active.as_mut();
+        }
         self.active_stack.last_mut()
     }
 
@@ -197,14 +212,21 @@ impl CacheManager {
         if let Some(id) = self.manual_active {
             return self.saved.get(&id);
         }
+        if self.active_stack.is_empty() {
+            return self.sync_active.as_ref();
+        }
         self.active_stack.last()
     }
 
     /// Clones the current active cache into saved storage.
     /// Returns the saved cache ID, or 0 if no active cache or limit reached.
     pub fn save(&mut self) -> i32 {
-        if self.saved.len() >= MAX_SAVED_CACHES {
-            Logger::warn("cache_save failed: maximum saved caches reached (1024).");
+        if self.saved.len() >= crate::limits::saved_caches() {
+            Logger::warn(&format!(
+                "cache_save failed: the saved-cache limit of {} was reached. \
+                 Free one with cache_delete, or raise MYSQL_LIMIT_SAVED_CACHES.",
+                crate::limits::saved_caches()
+            ));
             return 0;
         }
 
@@ -232,6 +254,38 @@ impl CacheManager {
     }
 
     /// Manually activates a saved cache (overrides stack top).
+    /// Frees the blocking result at the frame boundary.
+    ///
+    /// The async path frees its cache deterministically - pushed before the
+    /// callback, popped when it returns - and a blocking call has no callback
+    /// to hang that on. Tying it to the tick gives the same guarantee for the
+    /// same reason: the server is single-threaded, so a Pawn function runs
+    /// whole inside one frame, and by the next tick whoever called has already
+    /// returned. Anything that must outlive the frame is what `cache_save` is
+    /// for.
+    ///
+    /// Without this the result would sit there until the next blocking call,
+    /// which in a script that runs one at start-up means for the life of the
+    /// process - up to the row cap's worth of memory, held for nothing.
+    pub fn release_sync_result(&mut self) {
+        self.sync_active = None;
+    }
+
+    /// Whether a query callback is running right now.
+    ///
+    /// The stack is pushed before a callback and popped when it returns, so a
+    /// non-empty stack means exactly that.
+    pub fn callback_active(&self) -> bool {
+        !self.active_stack.is_empty()
+    }
+
+    /// Makes the result of a blocking call the current one, replacing whatever
+    /// the previous blocking call left. One live result at a time is the whole
+    /// lifetime rule: no id to track, nothing to free by hand.
+    pub fn set_sync_result(&mut self, entry: CacheEntry) {
+        self.sync_active = Some(entry);
+    }
+
     pub fn set_active(&mut self, id: i32) -> bool {
         if self.saved.contains_key(&id) {
             self.manual_active = Some(id);
@@ -243,12 +297,11 @@ impl CacheManager {
 
     /// Deactivates the manually set cache.
     pub fn unset_active(&mut self) -> bool {
-        if self.manual_active.is_some() {
-            self.manual_active = None;
-            true
-        } else {
-            false
-        }
+        // Both overrides answer to the same native: "stop pointing at this,
+        // go back to the callback's cache".
+        let had_manual = self.manual_active.take().is_some();
+        let had_sync = self.sync_active.take().is_some();
+        had_manual || had_sync
     }
 
     /// Checks if a saved cache ID is valid.
@@ -680,5 +733,83 @@ mod tests {
 
         let id2 = mgr.save();
         assert!(id2 >= 1); // wraps, never 0
+    }
+    // Blocking-call result slot.
+
+    #[test]
+    fn a_blocking_result_is_read_when_no_callback_is_running() {
+        let mut mgr = CacheManager::new();
+        assert!(!mgr.callback_active());
+        mgr.set_sync_result(CacheEntry::empty("SELECT 1".to_string()));
+        assert!(mgr.get_active().is_some());
+    }
+
+    #[test]
+    fn a_callback_cache_wins_over_a_blocking_result() {
+        let mut mgr = CacheManager::new();
+        mgr.set_sync_result(CacheEntry::empty("blocking".to_string()));
+        mgr.push_active(CacheEntry::empty("callback".to_string()));
+
+        assert!(mgr.callback_active());
+        assert_eq!(
+            mgr.get_active().map(CacheEntry::query_string),
+            Some("callback"),
+            "inside a callback, the current cache is the callback's own"
+        );
+
+        // ... and the blocking result comes back once the callback returns.
+        mgr.pop_active();
+        assert_eq!(
+            mgr.get_active().map(CacheEntry::query_string),
+            Some("blocking")
+        );
+    }
+
+    #[test]
+    fn a_second_blocking_call_replaces_the_first() {
+        let mut mgr = CacheManager::new();
+        mgr.set_sync_result(CacheEntry::empty("first".to_string()));
+        mgr.set_sync_result(CacheEntry::empty("second".to_string()));
+        assert_eq!(
+            mgr.get_active().map(CacheEntry::query_string),
+            Some("second"),
+            "only one blocking result is live at a time"
+        );
+    }
+
+    #[test]
+    fn unset_active_clears_a_blocking_result() {
+        let mut mgr = CacheManager::new();
+        mgr.set_sync_result(CacheEntry::empty("blocking".to_string()));
+        assert!(mgr.unset_active());
+        assert!(mgr.get_active().is_none());
+        assert!(!mgr.unset_active(), "nothing left to clear");
+    }
+    #[test]
+    fn the_frame_boundary_frees_a_blocking_result() {
+        let mut mgr = CacheManager::new();
+        mgr.set_sync_result(CacheEntry::empty("blocking".to_string()));
+        assert!(mgr.get_active().is_some());
+
+        mgr.release_sync_result();
+        assert!(
+            mgr.get_active().is_none(),
+            "a blocking result must not outlive the frame that asked for it"
+        );
+    }
+
+    #[test]
+    fn the_frame_boundary_leaves_saved_caches_alone() {
+        // What a script asked to keep is kept; only the implicit result goes.
+        let mut mgr = CacheManager::new();
+        mgr.push_active(CacheEntry::empty("callback".to_string()));
+        let id = mgr.save();
+        mgr.pop_active();
+
+        mgr.set_sync_result(CacheEntry::empty("blocking".to_string()));
+        mgr.release_sync_result();
+
+        assert!(id > 0);
+        assert!(mgr.set_active(id), "the saved cache is still there");
     }
 }

@@ -101,7 +101,7 @@ The gamemode-visible semantics are equivalent (N queries, callbacks in submissio
 | Memory leak | **Impossible** (cache managed automatically) | Possible without `cache_delete()` |
 | Runtime dependencies | **None** | MySQL C Connector + Boost |
 | Open issues | New (active development) | **50+ open issues** on GitHub |
-| Synchronous blocking query | **Removed** (never blocks the server tick) | Exists (`mysql_query` blocks) |
+| Synchronous blocking query | **Opt-in per call** (`MYSQL_SYNC`), never the default | The default (`mysql_query` blocks) |
 
 ## 1. Memory safety
 
