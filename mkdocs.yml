@@ -43,7 +43,11 @@ theme:
       toggle:
         icon: material/weather-sunny
         name: Light mode
+  # A database icon in the header and the browser tab, in place of the
+  # theme's default cloud - this documents a MySQL plugin.
+  favicon: assets/favicon.svg
   icon:
+    logo: material/database
     repo: fontawesome/brands/github
     edit: material/pencil
     view: material/eye
