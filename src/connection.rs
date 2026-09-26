@@ -602,7 +602,7 @@ fn collect_result<P: mysql::prelude::Protocol>(
                 Err(e) => {
                     return Err(QueryError {
                         code: extract_mysql_errno(&e),
-                        message: e.to_string(),
+                        message: describe_mysql_error(&e),
                     });
                 }
             }
@@ -649,7 +649,7 @@ pub fn execute_query(conn: &mut PooledConn, query: &str) -> Result<CacheEntry, Q
     let raw = {
         let result = conn.query_iter(query).map_err(|e| QueryError {
             code: extract_mysql_errno(&e),
-            message: e.to_string(),
+            message: describe_mysql_error(&e),
         })?;
         collect_result(result)?
     };
@@ -687,6 +687,21 @@ fn extract_mysql_errno(err: &mysql::Error) -> u16 {
     match err {
         mysql::Error::MySqlError(e) => e.code,
         _ => 0,
+    }
+}
+
+/// The text to hand a gamemode for a failed query.
+///
+/// `mysql::Error`'s `Display` wraps the server's own message in the variant
+/// name, so a missing table reached `OnQueryError` as
+/// `MySqlError { ERROR 1146 (42S02): Table 'db.t' doesn't exist }` - Rust
+/// internals in a Pawn string. For a server-side error the message alone is
+/// what the script wants; everything else (IO, TLS, protocol) keeps the full
+/// text, which is all the detail there is.
+fn describe_mysql_error(err: &mysql::Error) -> String {
+    match err {
+        mysql::Error::MySqlError(e) => e.message.clone(),
+        other => other.to_string(),
     }
 }
 
