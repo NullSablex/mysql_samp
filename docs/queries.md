@@ -1,6 +1,13 @@
 # Queries
 
-Every query in mysql_samp is **non-blocking**: the statement runs on a worker thread and the result reaches your script on a later tick. The server never freezes waiting for the database. (Opening the connection is the one exception — see [`mysql_connect`](connection.md#mysql_connect) — which is why it belongs in `OnGameModeInit` and not in a player callback.)
+Every query in mysql_samp is **non-blocking by default**: the statement runs on a worker thread and the result reaches your script on a later tick, so the server does not freeze waiting for the database.
+
+Two things do block, and both are deliberate and named:
+
+- [`mysql_connect`](connection.md#mysql_connect) waits for the handshake, which is why it belongs in `OnGameModeInit` and not in a player callback.
+- A call that is given [`MYSQL_SYNC`](#mysql_sync--making-one-call-block-on-purpose) in place of a callback name blocks on purpose, for the cases where waiting is worth more than the tick — schema at start-up, a migration, a one-off command.
+
+Nothing blocks unless you wrote one of those two, and the second one says so at the call site.
 
 **The callback is optional.** Non-blocking does not mean "you have to write a callback for everything" — every native on this page takes `callback` with a default of `""`, and passing nothing means fire-and-forget:
 

@@ -47,7 +47,7 @@ Coverage of the MySQL R41-4 (BlueG / maddinat0r) Pawn API by **mysql_samp**. Sou
 | `mysql_query` | Yes (sync) | Yes (non-blocking, FIFO) | Always threaded — replaces `tquery` |
 | `mysql_tquery` | Yes | — | Subsumed by `mysql_query` (which is already non-blocking) |
 | `mysql_pquery` | Yes | Yes | Parallel, no ordering guarantee |
-| `mysql_query_file` | Yes | Yes | Non-blocking, like every query here. Not transactional — see the note in [Queries](docs/queries.md) |
+| `mysql_query_file` | Yes | Yes | Non-blocking by default, or blocking with `MYSQL_SYNC`. Not transactional — see the note in [Queries](docs/queries.md) |
 | `mysql_tquery_file` | Yes | — | Subsumed by `mysql_query_file`, which is already non-blocking |
 
 ## Cache
@@ -150,7 +150,7 @@ Coverage of the MySQL R41-4 (BlueG / maddinat0r) Pawn API by **mysql_samp**. Sou
 | Detailed file logs | `logs/mysql.log` with timestamp, 50 MB rotation into gzipped `logs/archive/`, and `MYSQL_SAMP_LOG_*` env overrides |
 | Build banner | Date/time stamped by `build.rs` via `BUILD_DATE` / `BUILD_TIME` / `BUILD_YEAR` |
 | Connection pool | `mysql::Pool` (`Clone + Send + Sync`) for safe multi-threaded access |
-| Fully non-blocking queries | Both `mysql_query` (FIFO) and `mysql_pquery` (parallel) run on worker threads |
+| Non-blocking queries by default | Both `mysql_query` (FIFO) and `mysql_pquery` (parallel) run on worker threads |
 | Opt-in blocking, per call | `MYSQL_SYNC` in the callback slot blocks that one call; refused inside a callback, and on every native that could not honour it |
 | ORM auto-cleanup | `OrmManager::destroy_by_amx` frees instances when their AMX is unloaded |
 | Universal SA-MP + Open Multiplayer binary | The same `.so` / `.dll` runs natively (component) or in legacy mode (`legacy_plugins`) |

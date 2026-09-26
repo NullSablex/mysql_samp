@@ -1,6 +1,6 @@
 # mysql_samp
 
-MySQL plugin for SA-MP and Open Multiplayer, written entirely in Rust. Non-blocking queries with FIFO ordering, a result cache, an ORM, zero external runtime dependencies.
+MySQL plugin for SA-MP and Open Multiplayer, written entirely in Rust. Non-blocking queries with FIFO ordering — plus opt-in blocking, per call, when start-up work is simpler that way — a result cache, an ORM, zero external runtime dependencies.
 
 !!! info "Not affiliated"
     This is an independent, community-maintained project. It is **not**

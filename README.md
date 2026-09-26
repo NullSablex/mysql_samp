@@ -27,7 +27,7 @@ The same binary loads on SA-MP and on Open Multiplayer — natively as a compone
 ### Highlights
 
 - **Zero external dependencies** — no `libmysqlclient`, no OpenSSL. The MySQL protocol and TLS (via rustls) are compiled directly into the binary.
-- **All queries are non-blocking** — `mysql_query` runs on background threads and the server never stalls. **That does not mean a callback for everything:** the callback is optional, so a write is one line (`mysql_query(conn, "UPDATE …")`) with no forward and no public. You pass a callback only to read a result back.
+- **Non-blocking by default, blocking when you say so** — `mysql_query` runs on background threads, so the server does not stall. **That does not mean a callback for everything:** the callback is optional, so a write is one line (`mysql_query(conn, "UPDATE …")`) with no forward and no public. You pass a callback only to read a result back — or `MYSQL_SYNC`, which makes that one call block and hands you the result on the next line, for start-up work where waiting is the simpler answer.
 - **Connection pool** — automatic reuse through `mysql::Pool`, thread-safe by design, with a configurable ceiling.
 - **Credentials out of the source** — `mysql_connect_file` reads them from a config file your repository does not have to carry.
 - **Schema scripts** — `mysql_query_file` runs a `.sql` file's statements in order, non-blocking.
