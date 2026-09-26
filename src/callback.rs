@@ -87,14 +87,18 @@ pub fn fire_on_query_error(
             None => continue,
         };
 
+        // The macro pushes its arguments in reverse (the AMX stack
+        // convention), so the order listed here is the order the public
+        // receives them in. It must match the forward:
+        //   OnQueryError(errorid, error[], callback[], query[], connId)
         let _ = exec_public!(
             amx,
             "OnQueryError",
-            conn_id,
-            query => string,
-            callback => string,
+            error_id,
             error_msg => string,
-            error_id
+            callback => string,
+            query => string,
+            conn_id
         );
     }
 }

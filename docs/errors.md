@@ -57,7 +57,7 @@ Fired on every loaded AMX when a threaded query fails. Parameters:
 
 | Parameter | Type | Description |
 |---|---|---|
-| `errorid` | int | MySQL server error code (1062, 1045, 1064, …) or `0` for transport-level errors (TCP drop, IO error) |
+| `errorid` | int | MySQL server error code (1062, 1045, 1064, …) or `0` when the statement never reached the server — a dropped connection, an IO error, or a `.sql` file that could not be read |
 | `error` | string | Full error text from the `mysql` crate |
 | `callback` | string | Name of the public the query asked for (empty if fire-and-forget) |
 | `query` | string | Exact SQL that was sent to the server. **Printing it puts the whole statement in your server log** — see the note below |

@@ -3,6 +3,7 @@ use samp::cell::Ref;
 use samp::native;
 use samp::prelude::*;
 
+use crate::callback;
 use crate::connection::{EscapeMode, escape_string};
 use crate::error::{ErrorState, MysqlError};
 use crate::logger::Logger;
@@ -182,9 +183,11 @@ impl MysqlPlugin {
         let script = match std::fs::read_to_string(&path) {
             Ok(script) => script,
             Err(err) => {
+                // The path is resolved against the server's working directory,
+                // which is the server root - not `scriptfiles/`. Getting that
+                // wrong is the common mistake here, so say where we looked.
                 let msg = format!("mysql_query_file: could not read '{path}': {err}");
-                Logger::warn(&msg);
-                self.connections.global_error = ErrorState::new(MysqlError::QueryFailed, msg);
+                self.report_script_failure(&msg, &path, &callback, conn_id);
                 return false;
             }
         };
@@ -192,8 +195,7 @@ impl MysqlPlugin {
         let statements = crate::sql::split_statements(&script);
         if statements.is_empty() {
             let msg = format!("mysql_query_file: '{path}' contains no statements.");
-            Logger::warn(&msg);
-            self.connections.global_error = ErrorState::new(MysqlError::QueryFailed, msg);
+            self.report_script_failure(&msg, &path, &callback, conn_id);
             return false;
         }
 
@@ -304,6 +306,25 @@ impl MysqlPlugin {
             return 0;
         }
         i32::try_from(output.len()).unwrap_or(i32::MAX)
+    }
+
+    /// Reports a `mysql_query_file` failure that happens before any statement
+    /// is submitted - the file could not be read, or held nothing to run.
+    ///
+    /// These used to be a log line and a `false` return, which a script that
+    /// fires the native and forgets it - the documented, callback-free way to
+    /// run a schema - never sees. A statement that fails *after* submission
+    /// reaches `OnQueryError`, so the two halves of the same operation
+    /// reported through different channels. Now both go to `OnQueryError`,
+    /// with the path as the "query" so the message names the file.
+    fn report_script_failure(&mut self, msg: &str, path: &str, callback: &str, conn_id: i32) {
+        Logger::warn(msg);
+        self.connections.global_error = ErrorState::new(MysqlError::QueryFailed, msg.to_string());
+        // `errorid` is documented as the MySQL server's own code, or 0 when the
+        // failure never reached the server. Nothing was sent here, so 0 it is -
+        // inventing a plugin-specific number would break that contract. The
+        // per-connection errno still reports MYSQL_ERROR_QUERY_FAILED.
+        callback::fire_on_query_error(&self.amx_list, 0, msg, callback, path, conn_id);
     }
 }
 
