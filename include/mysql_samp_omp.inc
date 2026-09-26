@@ -37,6 +37,16 @@ enum {
     MYSQL_OPT_POOL_SIZE,
 }
 
+// Memory limits, for mysql_limit_set / mysql_limit_get
+enum {
+    // Saved caches held by cache_save at once. Default 1024.
+    MYSQL_LIMIT_SAVED_CACHES = 0,
+    // Rows a single result set may carry. Default 100000.
+    MYSQL_LIMIT_RESULT_ROWS,
+    // Bytes an ORM string variable may bind. Default 4096.
+    MYSQL_LIMIT_ORM_STRING_LEN,
+}
+
 // Error codes
 enum {
     MYSQL_OK = 0,
@@ -175,6 +185,34 @@ native bool:MySQL_TlsActive(connId) = mysql_tls_active;
  *         encrypted or the id is unknown
  */
 native bool:MySQL_TlsCipher(connId, dest[], max_len = sizeof(dest)) = mysql_tls_cipher;
+
+// Limits
+
+/**
+ * Raises or lowers one of the memory caps.
+ *
+ * The caps exist so a gamemode cannot exhaust the server's memory by accident
+ * - a query matching a million rows, a loop saving a cache per tick. They are
+ * global, not per connection: the memory being protected is shared.
+ *
+ * Lowering a cap below what is already held keeps what is there and refuses
+ * the next one, so nothing is thrown away mid-round.
+ *
+ * @param limit  one of the MYSQL_LIMIT_* constants
+ * @param value  the new cap, which must be positive. 0 is refused: it would
+ *               refuse everything, and there is no "unlimited"
+ * @return true when the cap was changed, false on an unknown limit or a value
+ *         that is not positive
+ */
+native bool:MySQL_LimitSet(limit, value) = mysql_limit_set;
+
+/**
+ * Reads a cap, to report it or to restore it later.
+ *
+ * @param limit  one of the MYSQL_LIMIT_* constants
+ * @return the current cap, or 0 when the limit is unknown
+ */
+native MySQL_LimitGet(limit) = mysql_limit_get;
 
 // Error
 

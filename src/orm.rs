@@ -5,9 +5,9 @@ use samp::prelude::*;
 
 use crate::connection::{EscapeMode, escape_identifier, escape_string};
 
-/// Upper bound on the buffer size accepted by `orm_addvar_string`.
-/// Protects the AMX heap from oversized writes via a hostile `max_len`.
-pub const MAX_ORM_STRING_LEN: i32 = 4096;
+// The upper bound on the buffer `orm_addvar_string` accepts - what protects
+// the AMX heap from an oversized write through a hostile `max_len` - lives in
+// `crate::limits` now, so a script can raise it: MYSQL_LIMIT_ORM_STRING_LEN.
 
 /// ORM error codes exposed to Pawn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -290,10 +290,11 @@ impl OrmInstance {
                     amx_addr, max_len, ..
                 } => {
                     // Clamp max_len to a safe upper bound to prevent OOB writes.
-                    // The clamp guarantees the value is in 0..=MAX_ORM_STRING_LEN,
+                    // The clamp guarantees the value is within the ORM string cap,
                     // so the try_from below is infallible.
                     let safe_max =
-                        usize::try_from((*max_len).clamp(0, MAX_ORM_STRING_LEN)).unwrap_or(0);
+                        usize::try_from((*max_len).clamp(0, crate::limits::orm_string_len_i32()))
+                            .unwrap_or(0);
                     if safe_max == 0 {
                         continue;
                     }

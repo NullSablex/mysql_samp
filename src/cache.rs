@@ -2,9 +2,6 @@ use std::collections::HashMap;
 
 use crate::logger::Logger;
 
-/// Maximum number of saved caches allowed to prevent memory exhaustion.
-const MAX_SAVED_CACHES: usize = 1024;
-
 /// A single row: Vec of Option<String> where None represents SQL NULL.
 pub type CacheRow = Vec<Option<String>>;
 
@@ -203,8 +200,12 @@ impl CacheManager {
     /// Clones the current active cache into saved storage.
     /// Returns the saved cache ID, or 0 if no active cache or limit reached.
     pub fn save(&mut self) -> i32 {
-        if self.saved.len() >= MAX_SAVED_CACHES {
-            Logger::warn("cache_save failed: maximum saved caches reached (1024).");
+        if self.saved.len() >= crate::limits::saved_caches() {
+            Logger::warn(&format!(
+                "cache_save failed: the saved-cache limit of {} was reached. \
+                 Free one with cache_delete, or raise MYSQL_LIMIT_SAVED_CACHES.",
+                crate::limits::saved_caches()
+            ));
             return 0;
         }
 

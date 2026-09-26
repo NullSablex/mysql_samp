@@ -6,7 +6,7 @@ use crate::connection::EscapeMode;
 use crate::error::{ErrorState, MysqlError};
 use crate::logger::Logger;
 use crate::natives::query::parse_variadic_params;
-use crate::orm::{MAX_ORM_STRING_LEN, OrmError, OrmInstance, OrmVarBinding};
+use crate::orm::{OrmError, OrmInstance, OrmVarBinding};
 use crate::plugin::MysqlPlugin;
 use crate::query::CallbackInfo;
 
@@ -294,10 +294,10 @@ impl MysqlPlugin {
             return false;
         };
 
-        if max_len <= 0 || max_len > MAX_ORM_STRING_LEN {
+        if max_len <= 0 || max_len > crate::limits::orm_string_len_i32() {
             Logger::warn(&format!(
                 "ORM addvar_string failed: max_len must be between 1 and {}.",
-                MAX_ORM_STRING_LEN
+                crate::limits::orm_string_len_i32()
             ));
             return false;
         }

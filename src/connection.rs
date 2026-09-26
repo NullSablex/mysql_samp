@@ -559,9 +559,6 @@ pub fn attempt_query(
     }
 }
 
-/// Maximum number of rows stored in a single CacheEntry to prevent memory exhaustion.
-const MAX_RESULT_ROWS: usize = 100_000;
-
 /// Executes a query on a PooledConn and returns a CacheEntry with results.
 /// Renders a protocol value as the string the cache stores.
 ///
@@ -631,7 +628,7 @@ fn collect_result<P: mysql::prelude::Protocol>(
                 Ok(row) => {
                     // The ceiling spans the whole query, not each set, so a
                     // script cannot bypass it by returning many small sets.
-                    if total_rows >= MAX_RESULT_ROWS {
+                    if total_rows >= crate::limits::result_rows() {
                         truncated = true;
                         continue; // drain the rest to avoid protocol desync
                     }
@@ -672,7 +669,7 @@ fn build_cache_entry(
     if raw.truncated {
         crate::logger::Logger::warn(&format!(
             "Query result truncated to {} rows.",
-            MAX_RESULT_ROWS
+            crate::limits::result_rows()
         ));
     }
 

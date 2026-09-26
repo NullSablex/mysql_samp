@@ -1,6 +1,7 @@
 pub mod cache;
 pub mod connection;
 pub mod error;
+pub mod limits;
 pub mod options;
 pub mod orm;
 pub mod password;
