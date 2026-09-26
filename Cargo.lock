@@ -918,8 +918,9 @@ dependencies = [
 
 [[package]]
 name = "rust-samp"
-version = "3.4.0"
-source = "git+https://github.com/NullSablex/rust-samp.git?tag=v3.5.0#df66c770bb7c6f17b333f2dca15f8fff81f98529"
+version = "3.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42851d4b9181287c2d563c10252854ab87abd61336f7086feb9f2c6ec9e93320"
 dependencies = [
  "fern",
  "flate2",
@@ -932,8 +933,9 @@ dependencies = [
 
 [[package]]
 name = "rust-samp-codegen"
-version = "1.4.0"
-source = "git+https://github.com/NullSablex/rust-samp.git?tag=v3.5.0#df66c770bb7c6f17b333f2dca15f8fff81f98529"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b6c4017948d2be2b498361740bc84baa65ee0565572c8b8a7a06dcf237d064b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -942,8 +944,9 @@ dependencies = [
 
 [[package]]
 name = "rust-samp-sdk"
-version = "3.4.0"
-source = "git+https://github.com/NullSablex/rust-samp.git?tag=v3.5.0#df66c770bb7c6f17b333f2dca15f8fff81f98529"
+version = "3.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf910ae41fe86cd09c57c440c86524f7e0e06b328df47fff836190a7d6597c84"
 dependencies = [
  "bitflags 2.13.2",
 ]
@@ -1420,7 +1423,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
