@@ -1,6 +1,6 @@
 # Queries
 
-Every query in mysql_samp is **non-blocking**: the statement runs on a worker thread and the result reaches your script on a later tick. The server never freezes waiting for the database.
+Every query in mysql_samp is **non-blocking**: the statement runs on a worker thread and the result reaches your script on a later tick. The server never freezes waiting for the database. (Opening the connection is the one exception — see [`mysql_connect`](connection.md#mysql_connect) — which is why it belongs in `OnGameModeInit` and not in a player callback.)
 
 **The callback is optional.** Non-blocking does not mean "you have to write a callback for everything" — every native on this page takes `callback` with a default of `""`, and passing nothing means fire-and-forget:
 
@@ -273,6 +273,8 @@ native bool:mysql_query_file(connId, const path[], const callback[] = "", const 
 ```
 
 Reads a file and runs its statements in order on one connection, non-blocking like every other query here. Useful for schema setup and migrations.
+
+The path is resolved against the **server's working directory** — the folder holding `samp03svr` or `omp-server` — not against `scriptfiles/`. A path that does not resolve reaches `OnQueryError` with the name it tried, and `errorid` `0`, since nothing was sent to the server.
 
 ```pawn
 mysql_query_file(g_mysql, "scripts/schema.sql", "OnSchemaReady");

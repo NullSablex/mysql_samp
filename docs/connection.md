@@ -16,7 +16,20 @@ native mysql_connect(const host[], const user[], const password[], const databas
 | `database` | string | Default schema for the connection |
 | `options` | int | Options handle from `mysql_options_new`. `0` means "use defaults" |
 
-**Returns:** the connection id (`>= 1`) on success, `0` on failure. On failure the global error state is populated and `mysql_errno(0)` / `mysql_error(0, …)` describe the cause.
+**Returns:** the connection id (`>= 1`) on success, `0` on failure.
+
+!!! warning "This one native does block"
+
+    Every *query* in the plugin is non-blocking, but `mysql_connect` is not:
+    it opens a connection and waits for the handshake before returning the id.
+    Measured against a local MariaDB it costs around 10 ms, and around 70 ms
+    with TLS; a database on another host, or one that is not answering, costs
+    whatever the network and `MYSQL_OPT_CONNECT_TIMEOUT` say.
+
+    That is fine where it belongs — `OnGameModeInit`, before anyone is
+    connected. It is not fine in a player callback: reconnecting there freezes
+    every player for as long as the handshake takes. Connect once at startup
+    and keep the id. On failure the global error state is populated and `mysql_errno(0)` / `mysql_error(0, …)` describe the cause.
 
 ### TCP example
 
