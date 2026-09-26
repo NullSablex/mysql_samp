@@ -2,6 +2,11 @@
 
 Runnable Pawn snippets showing how to use the plugin on **SA-MP** and **Open Multiplayer**. The plugin natives (`mysql_*`, `cache_*`, `orm_*`) and the `OnQueryError` forward are identical across both servers — every snippet here exercises only the plugin API.
 
+> **Non-blocking does not mean a callback for everything.** Every native that takes a `callback` takes it with a
+> default of `""`, so a write is one line and nothing else — see [`12_no_callback.pwn`](12_no_callback.pwn).
+> The exception is the two password natives, whose callback is required. Most examples below pass a callback
+> because they read a result back, not because it is mandatory.
+
 > **Start with [`08_prepared_statements.pwn`](08_prepared_statements.pwn) for anything involving player input.** `mysql_format` (example 04) escapes values into the SQL text, which is correct only as long as the escaping matches the server's `sql_mode`. Prepared statements bind values server-side, so there is nothing to escape and nothing to get wrong.
 
 | File | Topic |
@@ -17,6 +22,8 @@ Runnable Pawn snippets showing how to use the plugin on **SA-MP** and **Open Mul
 | [`09_transactions.pwn`](09_transactions.pwn) | `mysql_transaction_*` — all-or-nothing batches |
 | [`10_password_hashing.pwn`](10_password_hashing.pwn) | Argon2id: `mysql_hash_password` / `mysql_verify_password` |
 | [`11_config_and_scripts.pwn`](11_config_and_scripts.pwn) | `mysql_connect_file`, `mysql_query_file`, multiple result sets |
+| [`12_no_callback.pwn`](12_no_callback.pwn) | Fire-and-forget: non-blocking queries **without** a callback |
+| [`13_ordering.pwn`](13_ordering.pwn) | What is ordered (callbacks) and what is not (execution), and what to use instead |
 
 ### Companion files
 

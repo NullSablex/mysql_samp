@@ -207,7 +207,8 @@ native bool:mysql_log(log_level);
  *
  * @param connId    connection id
  * @param query     the SQL
- * @param callback  callback to fire with the result, or "" for none
+ * @param callback  callback to fire with the result. Optional: "" (the
+ *                  default) discards the result and fires nothing
  * @param format    types of the extra callback args ("d" int, "f" float, "s" string)
  * @return true if submitted, false on a bad connection
  */
@@ -218,7 +219,8 @@ native bool:mysql_query(connId, const query[], const callback[] = "", const form
  *
  * @param connId    connection id
  * @param query     the SQL
- * @param callback  callback to fire with the result, or "" for none
+ * @param callback  callback to fire with the result. Optional: "" (the
+ *                  default) discards the result and fires nothing
  * @param format    types of the extra callback args
  * @return true if submitted, false on a bad connection
  */
@@ -265,7 +267,8 @@ native mysql_format(connId, dest[], max_len, const format[], {Float,_}:...);
  *
  * @param connId    connection id
  * @param path      path to the .sql file
- * @param callback  callback to fire with the last statement's result, or ""
+ * @param callback  callback to fire with the last statement's result.
+ *                  Optional: "" (the default) discards it
  * @param format    types of the extra callback args
  * @return true if submitted, false on a bad connection or unreadable file
  */
@@ -338,7 +341,8 @@ native bool:mysql_stmt_bind_null(stmtId);
  * not match the number of `?` placeholders.
  *
  * @param stmtId    statement id
- * @param callback  callback to fire with the result, or "" for none
+ * @param callback  callback to fire with the result. Optional: "" (the
+ *                  default) discards the result and fires nothing
  * @param format    types of the extra callback args
  * @return true if submitted, false on a bad id or arity mismatch
  */
@@ -348,7 +352,8 @@ native bool:mysql_stmt_execute(stmtId, const callback[] = "", const format[] = "
  * Executes a statement on a worker thread, parallel: no ordering guarantee.
  *
  * @param stmtId    statement id
- * @param callback  callback to fire with the result, or "" for none
+ * @param callback  callback to fire with the result. Optional: "" (the
+ *                  default) discards the result and fires nothing
  * @param format    types of the extra callback args
  * @return true if submitted, false on a bad id or arity mismatch
  */
@@ -593,7 +598,8 @@ native orm_errno(orm_id);
  * SELECTs the row matching the key and fills the bound variables.
  *
  * @param orm_id    ORM id
- * @param callback  callback to fire when done, or ""
+ * @param callback  callback to fire when done. Optional: "" (the default)
+ *                  runs the operation and fires nothing
  * @param format    types of the extra callback args
  * @return true if submitted, false on failure
  */
@@ -603,7 +609,8 @@ native bool:orm_select(orm_id, const callback[] = "", const format[] = "", {Floa
  * UPDATEs the row matching the key with the bound variables.
  *
  * @param orm_id    ORM id
- * @param callback  callback to fire when done, or ""
+ * @param callback  callback to fire when done. Optional: "" (the default)
+ *                  runs the operation and fires nothing
  * @param format    types of the extra callback args
  * @return true if submitted, false on failure
  */
@@ -613,7 +620,8 @@ native bool:orm_update(orm_id, const callback[] = "", const format[] = "", {Floa
  * INSERTs a row from the bound variables.
  *
  * @param orm_id    ORM id
- * @param callback  callback to fire when done, or ""
+ * @param callback  callback to fire when done. Optional: "" (the default)
+ *                  runs the operation and fires nothing
  * @param format    types of the extra callback args
  * @return true if submitted, false on failure
  */
@@ -623,7 +631,8 @@ native bool:orm_insert(orm_id, const callback[] = "", const format[] = "", {Floa
  * DELETEs the row matching the key.
  *
  * @param orm_id    ORM id
- * @param callback  callback to fire when done, or ""
+ * @param callback  callback to fire when done. Optional: "" (the default)
+ *                  runs the operation and fires nothing
  * @param format    types of the extra callback args
  * @return true if submitted, false on failure
  */
@@ -633,7 +642,8 @@ native bool:orm_delete(orm_id, const callback[] = "", const format[] = "", {Floa
  * INSERTs when the key is empty, UPDATEs otherwise.
  *
  * @param orm_id    ORM id
- * @param callback  callback to fire when done, or ""
+ * @param callback  callback to fire when done. Optional: "" (the default)
+ *                  runs the operation and fires nothing
  * @param format    types of the extra callback args
  * @return true if submitted, false on failure
  */
@@ -711,7 +721,8 @@ native bool:orm_setkey(orm_id, const column_name[]);
  * Hashes a password with Argon2id, off the server thread.
  *
  * @param password  the plaintext
- * @param callback  callback receiving the PHC hash as its first argument
+ * @param callback  callback receiving the PHC hash as its first argument.
+ *                  REQUIRED - the hash is delivered only through it
  * @param format    types of the extra callback args
  * @return true if queued, false if the callback is empty, the password exceeds
  *         1 KiB, or the work queue is full
@@ -723,7 +734,8 @@ native bool:mysql_hash_password(const password[], const callback[], const format
  *
  * @param password  the plaintext
  * @param hash      the stored PHC string
- * @param callback  callback receiving the bool result as its first argument
+ * @param callback  callback receiving the bool result as its first
+ *                  argument. REQUIRED - the result arrives only through it
  * @param format    types of the extra callback args
  * @return true if queued, false if the callback is empty, the password exceeds
  *         1 KiB, or the work queue is full
@@ -772,7 +784,8 @@ native bool:mysql_transaction_add_stmt(txId, stmtId);
  * afterwards). The callback receives the cache of the LAST step.
  *
  * @param txId      transaction id
- * @param callback  callback to fire on commit, or ""
+ * @param callback  callback to fire on commit. Optional: "" (the default)
+ *                  commits and fires nothing
  * @param format    types of the extra callback args
  * @return true if submitted, false on a bad id or empty batch
  */

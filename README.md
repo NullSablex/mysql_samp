@@ -27,7 +27,7 @@ The same binary loads on SA-MP and on Open Multiplayer — natively as a compone
 ### Highlights
 
 - **Zero external dependencies** — no `libmysqlclient`, no OpenSSL. The MySQL protocol and TLS (via rustls) are compiled directly into the binary.
-- **All queries are non-blocking** — `mysql_query` runs on background threads with FIFO ordering. The server never stalls.
+- **All queries are non-blocking** — `mysql_query` runs on background threads and the server never stalls. **That does not mean a callback for everything:** the callback is optional, so a write is one line (`mysql_query(conn, "UPDATE …")`) with no forward and no public. You pass a callback only to read a result back.
 - **Connection pool** — automatic reuse through `mysql::Pool`, thread-safe by design, with a configurable ceiling.
 - **Credentials out of the source** — `mysql_connect_file` reads them from a config file your repository does not have to carry.
 - **Schema scripts** — `mysql_query_file` runs a `.sql` file's statements in order, non-blocking.
@@ -82,8 +82,11 @@ public OnGameModeInit() {
         return 1;
     }
 
-    // Non-blocking query with callback
+    // Reading a result: needs a callback, because the rows arrive later
     mysql_query(gMysql, "SELECT * FROM players LIMIT 10", "OnPlayersLoaded");
+
+    // Writing: no callback, no forward, no public - and still non-blocking
+    mysql_query(gMysql, "UPDATE server_state SET last_start = NOW()");
     return 1;
 }
 
@@ -105,7 +108,7 @@ public OnGameModeExit() {
 }
 ```
 
-Browse the [examples/](examples/) folder for self-contained `.pwn` scripts covering connection setup, threaded queries, ORM, TLS, error handling, prepared statements, transactions, password hashing, config files, `.sql` scripts and multi-result sets. For anything carrying player input, start with [`08_prepared_statements.pwn`](examples/08_prepared_statements.pwn). The plugin natives (`mysql_*`, `cache_*`, `orm_*`) and the `OnQueryError` forward are identical across SA-MP and Open Multiplayer, so every example builds and runs on both — the only thing that differs between servers is the installation path documented above.
+Browse the [examples/](examples/) folder for self-contained `.pwn` scripts covering connection setup, threaded queries, ORM, TLS, error handling, prepared statements, transactions, password hashing, config files, `.sql` scripts and multi-result sets. For anything carrying player input, start with [`08_prepared_statements.pwn`](examples/08_prepared_statements.pwn); for the callback-free form and for what is and is not ordered, see [`12_no_callback.pwn`](examples/12_no_callback.pwn) and [`13_ordering.pwn`](examples/13_ordering.pwn). The plugin natives (`mysql_*`, `cache_*`, `orm_*`) and the `OnQueryError` forward are identical across SA-MP and Open Multiplayer, so every example builds and runs on both — the only thing that differs between servers is the installation path documented above.
 
 ## Documentation
 
