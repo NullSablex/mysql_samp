@@ -1,0 +1,29 @@
+name: Feature request
+description: Something the plugin should be able to do.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: |
+        The situation first, not the solution. The API is deliberately small,
+        and what decides a new native is whether the common case still fits in
+        two lines.
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: How you do it today
+      description: With the current natives, or why it cannot be done at all.
+    validations:
+      required: false
+  - type: textarea
+    id: idea
+    attributes:
+      label: What it could look like
+      description: A sketch of the call, if you have one in mind.
+      render: pawn
+    validations:
+      required: false
