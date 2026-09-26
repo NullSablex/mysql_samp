@@ -244,11 +244,38 @@ stock DropSavedData()
 
 `cache_delete` also clears the manual override if the deleted id is currently active. `cache_unset_active` returns `false` if there is no manual override to clear (the stack-top behavior continues normally).
 
+## Binary columns
+
+Every value in the cache is a string, and a Pawn string ends at the first NUL
+byte. Binary data is therefore not readable as it is stored: a `BLOB` comes
+back mangled by the conversion to text, and anything whose bytes start with a
+zero — a `VECTOR`, most packed formats — comes back **empty**.
+
+Convert on the SQL side, where the server can do it properly:
+
+```pawn
+// BLOB as hex text
+mysql_query(g_mysql, "SELECT HEX(data) AS data FROM files WHERE id = 1", "OnFile");
+
+// MySQL 9 / MariaDB 11.7+ VECTOR as text, and distances as plain numbers
+mysql_query(g_mysql,
+    "SELECT VEC_ToText(emb) AS emb, \
+            VEC_DISTANCE_EUCLIDEAN(emb, VEC_FromText('[1,2,3]')) AS dist \
+     FROM items ORDER BY dist LIMIT 5", "OnNearest");
+```
+
+Both reach Pawn as ordinary strings and numbers. There is nothing to add on
+the plugin side: the work belongs in the query, and the result is a value Pawn
+can actually hold.
+
 ## Limits
 
-| Resource | Limit | What happens when hit |
+The caps below are the defaults. They are configurable —
+see [memory limits](options.md#memory-limits).
+
+| Resource | Default | What happens when hit |
 |---|---|---|
 | Saved caches | 1 024 | `cache_save()` returns `0`, warning logged |
 | Rows per query result | 100 000 | Extra rows are drained from the protocol but discarded; one warning is logged |
 
-The 100k-row limit prevents a single runaway `SELECT *` from blowing the server's memory.
+The row cap prevents a single runaway `SELECT *` from blowing the server's memory.
