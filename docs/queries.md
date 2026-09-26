@@ -1,6 +1,17 @@
 # Queries
 
-Every query in mysql_samp is **non-blocking**: the statement runs on a worker thread and the callback is invoked on a later tick. The server never freezes waiting for the database.
+Every query in mysql_samp is **non-blocking**: the statement runs on a worker thread and the result reaches your script on a later tick. The server never freezes waiting for the database.
+
+**The callback is optional.** Non-blocking does not mean "you have to write a callback for everything" — every native on this page takes `callback` with a default of `""`, and passing nothing means fire-and-forget:
+
+```pawn
+// One line, no callback, no forward, no public. The server keeps running.
+mysql_query(g_mysql, "UPDATE players SET last_login = NOW() WHERE id = 1");
+```
+
+That covers most of what a script does with a database: `UPDATE`, `INSERT`, `DELETE`. You only need a callback when you want to **read** the result back, because a value that arrives later has nowhere else to arrive. A failure still reaches [`OnQueryError`](errors.md) either way, so a discarded result is not a silent one.
+
+The two exceptions are [`mysql_hash_password` and `mysql_verify_password`](security.md#password-storage): their callback is required, since the hash or the match result exists only there. Called with an empty callback they log a warning and return `false`.
 
 ## mysql_query — FIFO-ordered
 
@@ -18,7 +29,24 @@ native bool:mysql_query(connId, const query[], const callback[] = "", const form
 
 **Returns:** `true` if the query was queued, `false` if `connId` is unknown.
 
-**Ordering guarantee:** callbacks are delivered in **submission order**, even when the underlying queries finish out of order. A slow query blocks the dispatch of later callbacks until it completes.
+**Ordering guarantee — read this one carefully.** What is ordered is the **delivery of callbacks**, in submission order, even when the underlying queries finish out of order. A slow query holds back the dispatch of later callbacks until it completes.
+
+**Execution is not ordered.** Each query gets its own worker thread and its own pool connection the moment you submit it, so they run *at the same time* on the server. Two statements where the second depends on the first will race:
+
+```pawn
+// BROKEN: these run concurrently. The INSERT usually fails with
+// "Table 'x' doesn't exist" because the CREATE has not finished yet.
+mysql_query(g_mysql, "CREATE TABLE x (id INT)");
+mysql_query(g_mysql, "INSERT INTO x (id) VALUES (1)");
+```
+
+When one statement depends on another, pick the tool that actually serialises them:
+
+| What you need | Use |
+|---|---|
+| Schema setup, migrations, any `.sql` script | [`mysql_query_file`](#running-a-sql-file) — statements run in order, on one connection |
+| Writes that depend on each other | [`mysql_transaction_*`](#transactions) — one connection, in order, all-or-nothing |
+| A read that depends on a write | The callback of the write |
 
 ```pawn
 mysql_query(g_mysql, "SELECT * FROM players WHERE level > 5", "OnHighLevelPlayers");
@@ -94,7 +122,8 @@ mysql_pquery(g_mysql, "SELECT * FROM rewards WHERE id = 1", "OnRewards");
 |---|---|---|
 | Threading | One worker thread per query | One worker thread per query |
 | Callback order | FIFO (submission order) | First done, first dispatched |
-| Typical use | SELECT chains that depend on order | UPDATE/INSERT and independent reads |
+| Execution order | **Not ordered** — concurrent | **Not ordered** — concurrent |
+| Typical use | Reads whose callbacks must arrive in order | UPDATE/INSERT and independent reads |
 | Reordering cost | Yes — results buffer until the next sequence is available | None |
 
 Both natives create one OS thread per query — the cost of a thread spawn is roughly the cost of one TCP round-trip, well below the cost of a real MySQL query.
