@@ -62,9 +62,9 @@ enum {
  */
 #define MYSQL_SYNC "!sync"
 
-// Memory limits, for mysql_limit_set / mysql_limit_get
+// Memory limits, for MySQL_LimitSet / MySQL_LimitGet
 enum {
-    // Saved caches held by cache_save at once. Default 1024.
+    // Saved caches held by Cache_Save at once. Default 1024.
     MYSQL_LIMIT_SAVED_CACHES = 0,
     // Rows a single result set may carry. Default 100000.
     MYSQL_LIMIT_RESULT_ROWS,
@@ -305,9 +305,15 @@ native bool:MySQL_Log(log_level) = mysql_log;
  * @param connId    connection id
  * @param query     the SQL
  * @param callback  callback to fire with the result. Optional: "" (the
- *                  default) discards the result and fires nothing
+ *                  default) discards the result and fires nothing, or
+ *                  MYSQL_SYNC to make THIS call blocking and read the
+ *                  result on the next line
  * @param format    types of the extra callback args ("d" int, "f" float, "s" string)
  * @return true if submitted, false on a bad connection
+ *
+ * @example Blocking, for start-up work. Reads on the next line, no callback:
+ *   MySQL_Query(sql, "SELECT COUNT(*) AS n FROM accounts", MYSQL_SYNC);
+ *   new total = Cache_GetValueNameInt(0, "n");
  */
 native bool:MySQL_Query(connId, const query[], const callback[] = "", const format[] = "", {Float,_}:...) = mysql_query;
 
@@ -317,9 +323,15 @@ native bool:MySQL_Query(connId, const query[], const callback[] = "", const form
  * @param connId    connection id
  * @param query     the SQL
  * @param callback  callback to fire with the result. Optional: "" (the
- *                  default) discards the result and fires nothing
+ *                  default) discards the result and fires nothing, or
+ *                  MYSQL_SYNC to make THIS call blocking and read the
+ *                  result on the next line
  * @param format    types of the extra callback args
  * @return true if submitted, false on a bad connection
+ *
+ * @example Blocking. Same as the FIFO native in this mode, since a call that
+ *          waits has nothing to run in parallel with:
+ *   MySQL_PQuery(sql, "DELETE FROM sessions WHERE stale = 1", MYSQL_SYNC);
  */
 native bool:MySQL_PQuery(connId, const query[], const callback[] = "", const format[] = "", {Float,_}:...) = mysql_pquery;
 
@@ -365,9 +377,15 @@ native MySQL_Format(connId, dest[], max_len, const format[], {Float,_}:...) = my
  * @param connId    connection id
  * @param path      path to the .sql file
  * @param callback  callback to fire with the last statement's result.
- *                  Optional: "" (the default) discards it
+ *                  Optional: "" (the default) discards it, or MYSQL_SYNC
+ *                  to run the whole file on the server thread, in order,
+ *                  before the call returns
  * @param format    types of the extra callback args
  * @return true if submitted, false on a bad connection or unreadable file
+ *
+ * @example Blocking, which is what schema at start-up wants: the tables exist
+ *          on the line after, with no callback chain and no race:
+ *   MySQL_QueryFile(sql, "schema.sql", MYSQL_SYNC);
  */
 native bool:MySQL_QueryFile(connId, const path[], const callback[] = "", const format[] = "", {Float,_}:...) = mysql_query_file;
 
@@ -439,7 +457,8 @@ native bool:MySQL_StmtBindNull(stmtId) = mysql_stmt_bind_null;
  *
  * @param stmtId    statement id
  * @param callback  callback to fire with the result. Optional: "" (the
- *                  default) discards the result and fires nothing
+ *                  default) discards the result and fires nothing.
+ *                  MYSQL_SYNC is NOT accepted here
  * @param format    types of the extra callback args
  * @return true if submitted, false on a bad id or arity mismatch
  */
@@ -450,7 +469,8 @@ native bool:MySQL_StmtExecute(stmtId, const callback[] = "", const format[] = ""
  *
  * @param stmtId    statement id
  * @param callback  callback to fire with the result. Optional: "" (the
- *                  default) discards the result and fires nothing
+ *                  default) discards the result and fires nothing.
+ *                  MYSQL_SYNC is NOT accepted here
  * @param format    types of the extra callback args
  * @return true if submitted, false on a bad id or arity mismatch
  */
@@ -629,7 +649,7 @@ native Cache_Save() = cache_save;
 /**
  * Frees a saved cache.
  *
- * @param cache_id  id from cache_save
+ * @param cache_id  id from Cache_Save
  * @return true on success, false if the id is unknown
  */
 native bool:Cache_Delete(cache_id) = cache_delete;
@@ -637,7 +657,7 @@ native bool:Cache_Delete(cache_id) = cache_delete;
 /**
  * Makes a saved cache the active one.
  *
- * @param cache_id  id from cache_save
+ * @param cache_id  id from Cache_Save
  * @return true on success, false if the id is unknown
  */
 native bool:Cache_SetActive(cache_id) = cache_set_active;
@@ -659,7 +679,7 @@ native bool:Cache_IsAnyActive() = cache_is_any_active;
 /**
  * Whether a saved-cache id is still valid.
  *
- * @param cache_id  id from cache_save
+ * @param cache_id  id from Cache_Save
  * @return true if valid
  */
 native bool:Cache_IsValid(cache_id) = cache_is_valid;

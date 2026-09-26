@@ -48,6 +48,15 @@ theme:
     edit: material/pencil
     view: material/eye
 
+hooks:
+  - docs/hooks/generate_natives.py
+
+# The natives page is built from these, so a change to either has to
+# trigger a rebuild during `mkdocs serve`.
+watch:
+  - include
+  - scripts/gen_natives_page.py
+
 plugins:
   - search:
       lang: en
@@ -95,6 +104,7 @@ nav:
       - Examples: migration-examples.md
   - Reference:
       - API reference: api-reference.md
+      - Natives: natives.md
       - Benchmark: benchmark.md
 
 extra:
