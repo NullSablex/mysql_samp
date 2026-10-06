@@ -17,6 +17,7 @@ use argon2::Argon2;
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 
+use crate::plugin::MysqlPlugin;
 use crate::query::CallbackInfo;
 
 /// Why a password operation failed. A fixed set, not a string, so the failure
@@ -65,13 +66,13 @@ type Job = (Box<dyn FnOnce() -> PasswordOutcome + Send>, CallbackInfo);
 /// Runs Argon2id work on a bounded worker pool and collects the results.
 pub struct PasswordManager {
     jobs: mpsc::SyncSender<Job>,
-    receiver: mpsc::Receiver<PasswordResult>,
+    /// Results handed back by the workers, buffered until the next tick.
+    ready: Vec<PasswordResult>,
     queued: Arc<AtomicU64>,
 }
 
 impl PasswordManager {
     pub fn new() -> Self {
-        let (result_tx, receiver) = mpsc::channel::<PasswordResult>();
         let (jobs, job_rx) = mpsc::sync_channel::<Job>(MAX_QUEUED_JOBS);
         let queued = Arc::new(AtomicU64::new(0));
 
@@ -86,7 +87,6 @@ impl PasswordManager {
 
         for _ in 0..workers {
             let job_rx = job_rx.clone();
-            let result_tx = result_tx.clone();
             let queued = queued.clone();
 
             thread::spawn(move || {
@@ -107,19 +107,20 @@ impl PasswordManager {
 
                     let outcome = work();
                     queued.fetch_sub(1, Ordering::Relaxed);
-                    if result_tx
-                        .send(PasswordResult { outcome, callback })
-                        .is_err()
-                    {
-                        break;
-                    }
+                    // Same route as a finished query: the main thread takes it
+                    // before `on_tick`, which is where the callback is fired.
+                    samp::mainthread::post_with::<MysqlPlugin>(move |plugin| {
+                        plugin
+                            .passwords
+                            .accept(PasswordResult { outcome, callback });
+                    });
                 }
             });
         }
 
         Self {
             jobs,
-            receiver,
+            ready: Vec::new(),
             queued,
         }
     }
@@ -173,8 +174,13 @@ impl PasswordManager {
     }
 
     /// Drains everything finished since the last tick.
+    /// Takes a finished hash or verification from a worker thread.
+    pub fn accept(&mut self, result: PasswordResult) {
+        self.ready.push(result);
+    }
+
     pub fn poll_results(&mut self) -> Vec<PasswordResult> {
-        self.receiver.try_iter().collect()
+        std::mem::take(&mut self.ready)
     }
 }
 

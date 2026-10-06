@@ -143,7 +143,7 @@ impl MysqlPlugin {
                 callback_info,
                 req.conn_id,
                 auto_reconnect,
-            );
+            )
         } else {
             self.queries.submit_pquery(
                 pool,
@@ -151,10 +151,8 @@ impl MysqlPlugin {
                 callback_info,
                 req.conn_id,
                 auto_reconnect,
-            );
+            )
         }
-
-        true
     }
 
     /// Refuses `MYSQL_SYNC` on a native that does not implement it.
@@ -388,8 +386,7 @@ impl MysqlPlugin {
             path
         ));
         self.queries
-            .submit_script(pool, statements, callback_info, conn_id);
-        true
+            .submit_script(pool, statements, callback_info, conn_id)
     }
 
     /// mysql_tick()

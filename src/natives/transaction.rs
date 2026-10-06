@@ -132,7 +132,6 @@ impl MysqlPlugin {
         };
 
         self.queries
-            .submit_transaction(pool, tx.steps, callback_info, conn_id);
-        true
+            .submit_transaction(pool, tx.steps, callback_info, conn_id)
     }
 }

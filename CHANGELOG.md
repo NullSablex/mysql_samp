@@ -4,9 +4,9 @@ All notable changes to this project are documented in this file.
 
 Format inspired by [Keep a Changelog](https://keepachangelog.com/). Versioning follows [Semantic Versioning](https://semver.org/). Older entries live under [`changelog/`](changelog/).
 
-## [1.4.0] — 2026/10/04
+## [1.4.0] — 2026/10/11
 
-Built on rust-samp v3.5.0, now from crates.io. Additive on the Pawn side: four natives and one constant are new, nothing was removed or renamed, so 1.3.0 gamemodes compile unchanged. **One behaviour did change** — `OnQueryError` used to hand its arguments over in the wrong order, and now hands them over as the forward declares. Read the first entry under Fixed before upgrading if you handle that forward.
+Built on rust-samp v3.6.0, now from crates.io. Additive on the Pawn side: four natives and one constant are new, nothing was removed or renamed, so 1.3.0 gamemodes compile unchanged. **One behaviour did change** — `OnQueryError` used to hand its arguments over in the wrong order, and now hands them over as the forward declares. Read the first entry under Fixed before upgrading if you handle that forward.
 
 ### Added
 
@@ -35,6 +35,14 @@ Built on rust-samp v3.5.0, now from crates.io. Additive on the Pawn side: four n
 
 ### Fixed
 
+- **A burst of queries could kill the server, and could stall the FIFO queue for good.** Submitting 2000 queries in one tick aborted the process with `memory allocation of 4194304 bytes failed`, and the cause is specific to this architecture: a worker thread per query, with the default 8 MiB stack, inside a **32-bit** server. A few hundred live workers exhaust the address space, and the allocation that fails next takes the process with it.
+
+  Two things were wrong, and both are fixed. Workers now get a **256 KiB stack** — a worker opens a connection, runs one statement and builds a cache, it does not recurse — which moved the ceiling from roughly 1700 workers to past 9000 measured. And a refused thread is no longer a panic: `thread::spawn` panics when the OS says no, which the native wrapper caught and turned into a lost submission — lost *including its sequence number*, so every ordered callback queued behind it would have waited forever. The failure is now an ordinary failed result: the sequence is accounted for, `OnQueryError` fires, and the native returns `false`.
+
+  The submission natives also report that refusal honestly now. `mysql_query`, `mysql_pquery`, `mysql_query_file`, `mysql_stmt_execute`, `mysql_stmt_pexecute`, `mysql_transaction_execute` and the ORM CRUD natives returned `true` whenever the connection id was valid; they return what the submission actually did.
+
+  Measured after the fix: 9000 queries submitted in one tick, 9000 callbacks delivered, submission order intact, nothing left in flight.
+
 - **`OnQueryError` delivered its five arguments in reverse.** The forward is declared `OnQueryError(errorid, error[], callback[], query[], connId)`, and a gamemode received the connection id as `errorid`, the query text as `error`, the error message as `query`, and the MySQL code as `connId`. The cause was in the dispatch: `exec_public!` pushes its arguments in reverse — the AMX stack convention — so the order listed in the call is the order the public receives, and the code listed them backwards as if it had to invert them by hand. Present since 1.0.0. **Anyone handling this forward was reading the wrong fields and should check their handler.** (#56)
 
 - **Requesting TLS on a loopback host ran in plaintext.** `MYSQL_OPT_SSL = 1` against `127.0.0.1` reported success while `Ssl_cipher` came back empty. The driver's `prefer_socket` defaults to true and, after the handshake, moves a *loopback* connection onto the server's unix socket — where it secures nothing. The two conditions met on the most ordinary local setup there is. Asking for TLS now switches that optimisation off; without TLS it stays, which is where it helps. Verified against MariaDB 11.8: `TLS_AES_256_GCM_SHA384` where there used to be an empty string.
@@ -47,10 +55,18 @@ Built on rust-samp v3.5.0, now from crates.io. Additive on the Pawn side: four n
 
 ### Changed
 
-- **rust-samp moves from a git tag to crates.io** (`version = "3.5.0"`). This also clears a long-standing oddity: the `v3.5.0` tag declared `version = "3.4.0"` in its own manifest, so the lockfile recorded 3.4.0 pointing at the v3.5.0 tag. The SDK's new `mainthread` module is **not** adopted yet: its `post` takes a closure with no parameters and there is no route to plugin state from a worker thread, so the plugin's own `mpsc` channel stays until `post_with` / `post_with_amx` land.
+- **rust-samp moves from a git tag to crates.io, and on to `3.6.0`** — whose `mainthread` queue now carries results back from the worker threads. The move to the registry also clears a long-standing oddity: the `v3.5.0` tag declared `version = "3.4.0"` in its own manifest, so the lockfile recorded 3.4.0 pointing at the v3.5.0 tag.
 
-- **`mysql` 28.0.0 → 28.0.2**, plus a large round of transitive updates. (#38, #45, and the Dependabot group)
-- Routine dependency and action bumps: the `github-actions` group in three rounds, `pymdown-extensions` in the docs requirements, and the cargo group — `lru`, `sha1`, `num-bigint`, `wasip2`, `windows-sys` and `derive_utils` among them. (#39, #40, #44–#54)
+  **The plugin's own result channels are gone.** A finished query, or a finished Argon2id hash, posts a job that hands the result to the plugin; the SDK drains that queue immediately before `on_tick`, so the dispatch still happens in `on_tick` and nothing arrives a tick later than it used to. The ordering stays ours: jobs run in completion order, so the FIFO sequence buffer is still what puts `mysql_query` callbacks back in submission order.
+
+  Handing over and dispatching had to be separate steps, not a matter of taste. `post_with` documents that calling into Pawn from inside the job is not allowed, and the reason applies here exactly: a `public` re-entering one of these natives would take a second `&mut` to the same plugin, since `#[native]` resolves the plugin with `plugin::get` rather than the guarded `plugin::with_instance`. `post_with_amx` splits the two, but hands the script its reply only after the plugin borrow has ended — too late to hold a result cache across the call. Buffering in the job and dispatching in the tick satisfies both.
+
+- **`mysql` 28.0.0 → 28.0.3**, plus a large round of transitive updates. The 28.0.3 bump is the one that matters: it requires `lru` 0.18, which is how **RUSTSEC-2026-0253 stopped applying** — the fix had been merged upstream since 2026/09/21 and no `cargo update` could reach it while the driver still asked for `0.16`. The lockfile now carries `lru` 0.18.5. (#38, #45, #62, #64)
+- Routine dependency and action bumps: the `github-actions` group in five rounds, `pymdown-extensions` and `urllib3` in the docs requirements, and the cargo group — `lru`, `sha1`, `num-bigint`, `wasip2`, `windows-sys`, `derive_utils` and `io-enum` among them. (#39, #40, #44–#54, #61–#66)
+
+- **A closing sweep over the lockfile and the workflows**, so the release does not ship pins that were already stale when it was tagged. `cargo update` moved ten transitive crates — `cc`, `generic-array`, `powerfmt`, `serde` and its two companions, `twox-hash`, `uuid` and `zeroize`; seven pinned actions were re-pinned to their current releases (`upload-artifact` v7.0.2, `codeql-action` v4.38.3, `scorecard-action` v2.4.4, `install-action` v2.87.27, `action-gh-release` v3.0.3, `rust-cache` v2.9.2, `release-drafter` v7.10.0), SHA and `# vX.Y.Z` comment together, since a comment that drifts from its SHA is worse than no comment.
+
+- **`argon2` stays on 0.5, deliberately.** 0.6.0 is out and it is a breaking change in exactly the place that must not break quietly: the `std` feature is gone, `SaltString` and `OsRng` moved, `hash_password` changed signature and `PasswordHash` is deprecated. Hashes already written by `mysql_hash_password` have to keep verifying across the bump, and proving that belongs in a pull request of its own rather than riding along with a release.
 
 ### CI / tooling
 
@@ -80,12 +96,11 @@ Built on rust-samp v3.5.0, now from crates.io. Additive on the Pawn side: four n
 
 - **IPv6 is supported, in brackets.** `[::1]` is parsed and validated as an address; without brackets it is taken as a host name, which usually still connects but validates nothing. (#42)
 
-### Known advisories
+### Known advisory
 
-Both are informational, neither is resolvable here, and both are pinned behind the `mysql` crate:
+One is left, it is informational, and it is not resolvable here:
 
-- **RUSTSEC-2025-0134** — `rustls-pemfile` is unmaintained. The code that runs is the maintained `rustls-pki-types`; upstream still depends on the wrapper, so there is not even an unreleased fix to wait for.
-- **RUSTSEC-2026-0253** — `lru` is unsound in `LruCache::pop` if a key's `Drop` panics. The cache keys here are strings and integers, whose `Drop` does not panic. Upstream merged the bump to `lru` 0.18.2 on 2026/09/21 but has not released it; `mysql` still requires `0.16`, which a `cargo update` cannot cross.
+- **RUSTSEC-2025-0134** — `rustls-pemfile` is unmaintained. The code that actually runs is the maintained `rustls-pki-types`; the flagged crate is a thin wrapper over it. The `mysql` crate still depends on the wrapper, including on its own master, so there is not even an unreleased fix to wait for. Dropping it here would mean giving up TLS or forking the driver.
 
 ## [1.3.0] — 2026/09/07
 
