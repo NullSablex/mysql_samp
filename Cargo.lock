@@ -924,9 +924,9 @@ dependencies = [
 
 [[package]]
 name = "rust-samp"
-version = "3.5.0"
+version = "3.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42851d4b9181287c2d563c10252854ab87abd61336f7086feb9f2c6ec9e93320"
+checksum = "500793af78fd9784ab8a1fa09fad1b039e0a1dc7e6acfc41af23c7a737c29754"
 dependencies = [
  "fern",
  "flate2",
@@ -939,9 +939,9 @@ dependencies = [
 
 [[package]]
 name = "rust-samp-codegen"
-version = "1.5.0"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b6c4017948d2be2b498361740bc84baa65ee0565572c8b8a7a06dcf237d064b"
+checksum = "a6f90fbcc9557358882648f2f223ec7b11d868049e396c6493797c5a20e2f49e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -950,9 +950,9 @@ dependencies = [
 
 [[package]]
 name = "rust-samp-sdk"
-version = "3.5.0"
+version = "3.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf910ae41fe86cd09c57c440c86524f7e0e06b328df47fff836190a7d6597c84"
+checksum = "61cce73cc9379ce327b087b57592d7e14741859008cd4df6aed1b6f2be46a365"
 dependencies = [
  "bitflags 2.13.2",
 ]

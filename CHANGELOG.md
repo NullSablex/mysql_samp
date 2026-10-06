@@ -4,9 +4,9 @@ All notable changes to this project are documented in this file.
 
 Format inspired by [Keep a Changelog](https://keepachangelog.com/). Versioning follows [Semantic Versioning](https://semver.org/). Older entries live under [`changelog/`](changelog/).
 
-## [1.4.0] — 2026/10/04
+## [1.4.0] — 2026/10/06
 
-Built on rust-samp v3.5.0, now from crates.io. Additive on the Pawn side: four natives and one constant are new, nothing was removed or renamed, so 1.3.0 gamemodes compile unchanged. **One behaviour did change** — `OnQueryError` used to hand its arguments over in the wrong order, and now hands them over as the forward declares. Read the first entry under Fixed before upgrading if you handle that forward.
+Built on rust-samp v3.6.0, now from crates.io. Additive on the Pawn side: four natives and one constant are new, nothing was removed or renamed, so 1.3.0 gamemodes compile unchanged. **One behaviour did change** — `OnQueryError` used to hand its arguments over in the wrong order, and now hands them over as the forward declares. Read the first entry under Fixed before upgrading if you handle that forward.
 
 ### Added
 
@@ -47,10 +47,12 @@ Built on rust-samp v3.5.0, now from crates.io. Additive on the Pawn side: four n
 
 ### Changed
 
-- **rust-samp moves from a git tag to crates.io** (`version = "3.5.0"`). This also clears a long-standing oddity: the `v3.5.0` tag declared `version = "3.4.0"` in its own manifest, so the lockfile recorded 3.4.0 pointing at the v3.5.0 tag. The SDK's new `mainthread` module is **not** adopted yet: its `post` takes a closure with no parameters and there is no route to plugin state from a worker thread, so the plugin's own `mpsc` channel stays until `post_with` / `post_with_amx` land.
+- **rust-samp moves from a git tag to crates.io**, and on to `3.6.0`. The move clears a long-standing oddity: the `v3.5.0` tag declared `version = "3.4.0"` in its own manifest, so the lockfile recorded 3.4.0 pointing at the v3.5.0 tag.
 
-- **`mysql` 28.0.0 → 28.0.2**, plus a large round of transitive updates. (#38, #45, and the Dependabot group)
-- Routine dependency and action bumps: the `github-actions` group in three rounds, `pymdown-extensions` in the docs requirements, and the cargo group — `lru`, `sha1`, `num-bigint`, `wasip2`, `windows-sys` and `derive_utils` among them. (#39, #40, #44–#54)
+  The SDK's `mainthread` queue is **not** adopted, and 3.6.0 is where that became a decision rather than a limitation: it adds `post_with`, `post_with_amx`, `plugin::with_instance` and `plugin::is_borrowed`, which is everything the plugin was waiting for. It still does not fit what this plugin does on completion. A finished query has to push its cache, call a Pawn `public` and pop the cache, and `post_with` documents that calling into Pawn from inside the job is not allowed — a `public` that re-enters a native would take a second `&mut` to the same plugin. `post_with_amx` splits those apart, but it hands the script the reply only after the plugin borrow has ended, which is too late to hold a cache across the call; and jobs run in completion order, so FIFO ordering would still need the sequence buffer and a drain that only the tick can do in order. The plugin's own `mpsc` channel, drained in `on_tick`, remains the shape that fits.
+
+- **`mysql` 28.0.0 → 28.0.3**, plus a large round of transitive updates. The 28.0.3 bump is the one that matters: it requires `lru` 0.18, which is how **RUSTSEC-2026-0253 stopped applying** — the fix had been merged upstream since 2026/09/21 and no `cargo update` could reach it while the driver still asked for `0.16`. The lockfile now carries `lru` 0.18.5. (#38, #45, #62, #64)
+- Routine dependency and action bumps: the `github-actions` group in five rounds, `pymdown-extensions` and `urllib3` in the docs requirements, and the cargo group — `lru`, `sha1`, `num-bigint`, `wasip2`, `windows-sys`, `derive_utils` and `io-enum` among them. (#39, #40, #44–#54, #61–#66)
 
 ### CI / tooling
 
@@ -80,12 +82,11 @@ Built on rust-samp v3.5.0, now from crates.io. Additive on the Pawn side: four n
 
 - **IPv6 is supported, in brackets.** `[::1]` is parsed and validated as an address; without brackets it is taken as a host name, which usually still connects but validates nothing. (#42)
 
-### Known advisories
+### Known advisory
 
-Both are informational, neither is resolvable here, and both are pinned behind the `mysql` crate:
+One is left, it is informational, and it is not resolvable here:
 
-- **RUSTSEC-2025-0134** — `rustls-pemfile` is unmaintained. The code that runs is the maintained `rustls-pki-types`; upstream still depends on the wrapper, so there is not even an unreleased fix to wait for.
-- **RUSTSEC-2026-0253** — `lru` is unsound in `LruCache::pop` if a key's `Drop` panics. The cache keys here are strings and integers, whose `Drop` does not panic. Upstream merged the bump to `lru` 0.18.2 on 2026/09/21 but has not released it; `mysql` still requires `0.16`, which a `cargo update` cannot cross.
+- **RUSTSEC-2025-0134** — `rustls-pemfile` is unmaintained. The code that actually runs is the maintained `rustls-pki-types`; the flagged crate is a thin wrapper over it. The `mysql` crate still depends on the wrapper, including on its own master, so there is not even an unreleased fix to wait for. Dropping it here would mean giving up TLS or forking the driver.
 
 ## [1.3.0] — 2026/09/07
 
