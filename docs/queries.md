@@ -34,7 +34,7 @@ native bool:mysql_query(connId, const query[], const callback[] = "", const form
 | `format` | string | One char per variadic parameter (`d`/`i` = int, `f` = float, `s` = string) |
 | `...` | variadic | Values forwarded to the callback in the order they appear |
 
-**Returns:** `true` if the query was queued, `false` if `connId` is unknown.
+**Returns:** `true` if the query was queued, `false` if `connId` is unknown or the submission itself failed — the server refusing a new worker thread, which only happens under a burst of thousands in a single tick. A refused submission fires `OnQueryError` with `errorid` `0`, so a FIFO chain never waits on a callback that is not coming.
 
 **Ordering guarantee — read this one carefully.** What is ordered is the **delivery of callbacks**, in submission order, even when the underlying queries finish out of order. A slow query holds back the dispatch of later callbacks until it completes.
 

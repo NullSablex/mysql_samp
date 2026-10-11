@@ -157,7 +157,7 @@ impl MysqlPlugin {
                 callback_info,
                 conn_id,
                 auto_reconnect,
-            );
+            )
         } else {
             self.queries.submit_pprepared(
                 pool,
@@ -166,8 +166,7 @@ impl MysqlPlugin {
                 callback_info,
                 conn_id,
                 auto_reconnect,
-            );
+            )
         }
-        true
     }
 }

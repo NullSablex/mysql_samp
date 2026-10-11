@@ -196,8 +196,7 @@ impl MysqlPlugin {
             callback_info,
             conn_id,
             self.connections.get_auto_reconnect(conn_id),
-        );
-        true
+        )
     }
 
     /// orm_apply_cache(orm_id, row = 0)
