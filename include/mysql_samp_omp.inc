@@ -23,7 +23,7 @@
  * include always matches the binary it shipped with. Comparing it at start-up
  * is how a gamemode catches an include left behind by an upgrade.
  */
-#define MYSQL_SAMP_VERSION "1.4.0"
+#define MYSQL_SAMP_VERSION "1.4.1"
 
 // Connection options
 enum {

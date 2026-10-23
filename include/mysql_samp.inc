@@ -1,5 +1,5 @@
 /*
- * mysql_samp v1.4.0 - MySQL plugin for SA-MP and Open Multiplayer.
+ * mysql_samp v1.4.1 - MySQL plugin for SA-MP and Open Multiplayer.
  * Author:     NullSablex
  * Repository: https://github.com/NullSablex/mysql_samp
  * License:    GPL-3.0
@@ -17,7 +17,7 @@
  * include always matches the binary it shipped with. Comparing it at start-up
  * is how a gamemode catches an include left behind by an upgrade.
  */
-#define MYSQL_SAMP_VERSION "1.4.0"
+#define MYSQL_SAMP_VERSION "1.4.1"
 
 // Connection options
 enum {
