@@ -4,6 +4,34 @@ All notable changes to this project are documented in this file.
 
 Format inspired by [Keep a Changelog](https://keepachangelog.com/). Versioning follows [Semantic Versioning](https://semver.org/). Older entries live under [`changelog/`](changelog/).
 
+## [1.4.1] — 2026/10/23
+
+Dependency-only patch release. There are no Pawn API or behaviour changes; the update closes two TLS certificate-validation advisories published after 1.4.0 and refreshes the dependency and CI pins accumulated since that release.
+
+### Security
+
+- **`rustls-webpki` 0.103.15 → 0.103.16 (RUSTSEC-2026-0382).** Certificate path building could accept a distrusted intermediate when the same certificate was also presented as an end entity. The patched release applies distrust constraints consistently, so a chain through a revoked intermediate is rejected. (#83)
+- **`webpki-roots` 1.0.9 → 1.0.10 (RUSTSEC-2026-0381).** The bundled Mozilla root store still permitted trust paths through distrusted emSign intermediate certificates. The refreshed store removes those paths. (#83)
+
+`cargo audit` reports no known vulnerabilities after these updates. The existing informational `rustls-pemfile` maintenance warning remains, as described under Known advisory below.
+
+### Changed
+
+- **`mysql` 28.0.3 → 28.0.4 in the lockfile**, and the manifest's minimum accepted version moves from 28.0.0 to 28.0.4 so a fresh resolution cannot select a driver older than the version shipped here. (#80, #83)
+- Routine Rust dependency updates across the two Dependabot cargo groups and the final security refresh: `arc-swap`, `cc`, `crc32fast`, `deranged`, `equivalent`, `find-msvc-tools`, the ICU4X 2.4 family, `libc`, `num_threads`, `rustls`, `rustls-webpki`, `serde_json`, `smallvec`, `syn`, `tinystr`, the TOML parser/editor family, `unicode-ident`, `uuid`, `webpki-roots`, `yoke` and `zerovec`. (#69, #80, #83)
+- Documentation dependencies were refreshed by moving `pymdown-extensions` from 12.1 through 12.2 to 12.3. (#68, #79)
+
+### CI / tooling
+
+- **CodeQL 4.38.3 → 4.39.0** for initialization, analysis and SARIF upload, keeping all three workflow stages on the same pinned revision. (#71, #72, #74, #81)
+- Refreshed immutable action pins for `Swatinem/rust-cache` 2.9.2, `softprops/action-gh-release` 3.0.3 and `ossf/scorecard-action` 2.4.4; the tags stay the same, but their upstream release SHAs moved. `taiki-e/install-action` advances from 2.87.27 to 2.87.29. (#70, #73, #81, #82)
+
+### Known advisory
+
+One informational warning remains and is unchanged from 1.4.0:
+
+- **RUSTSEC-2025-0134** — `rustls-pemfile` is unmaintained. The maintained `rustls-pki-types` performs the underlying work, while `mysql` still depends on this wrapper. Removing it here would require replacing or forking the driver, or giving up TLS.
+
 ## [1.4.0] — 2026/10/11
 
 Built on rust-samp v3.6.0, now from crates.io. Additive on the Pawn side: four natives and one constant are new, nothing was removed or renamed, so 1.3.0 gamemodes compile unchanged. **One behaviour did change** — `OnQueryError` used to hand its arguments over in the wrong order, and now hands them over as the forward declares. Read the first entry under Fixed before upgrading if you handle that forward.
