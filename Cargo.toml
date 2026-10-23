@@ -17,7 +17,7 @@ samp = { package = "rust-samp", version = "3.6.0", features = ["compression"] }
 # crate's `make_secure` is a `panic!` stub, so MYSQL_OPT_SSL would abort the
 # connection instead of encrypting it. `ring` rather than the default
 # `aws_lc_rs` because it cross-compiles to i686 (incl. MSVC via cargo-xwin).
-mysql = { version = "28.0.0", default-features = false, features = ["default-rust", "rustls-tls-ring"] }
+mysql = { version = "28.0.4", default-features = false, features = ["default-rust", "rustls-tls-ring"] }
 # Argon2id password hashing. `std` for the error types; the default features
 # already bring `password-hash` (PHC string format) and `rand` (salt generation).
 argon2 = { version = "0.5", features = ["std"] }
