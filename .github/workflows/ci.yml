@@ -1,0 +1,147 @@
+name: CI
+
+# Single entry point for pushes and pull requests. The `changes` job maps the
+# diff to the checks that can be affected; unrelated jobs are skipped. The
+# final `CI` job is the only required build check, so skipped jobs never leave
+# a required status pending. Root Markdown, the changelog, the license, scripts
+# outside the docs generator and repository metadata trigger nothing beyond
+# this gate.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      pawn: ${{ steps.filter.outputs.pawn }}
+      docs: ${{ steps.filter.outputs.docs }}
+      audit: ${{ steps.filter.outputs.audit }}
+      codeql: ${{ steps.filter.outputs.codeql }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Map changed paths to checks
+        id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          all=false
+          if [ "$EVENT" = pull_request ]; then
+            files=$(git diff --name-only "$BASE...$HEAD")
+          elif [ "$EVENT" = push ] && [ -n "$BEFORE" ] \
+            && [ "$BEFORE" != 0000000000000000000000000000000000000000 ] \
+            && git cat-file -e "$BEFORE^{commit}" 2> /dev/null; then
+            files=$(git diff --name-only "$BEFORE" "$SHA")
+          else
+            all=true
+            files=''
+          fi
+          printf 'Changed files:\n%s\n' "${files:-(full run)}"
+          # CI definitions affect every check, so they run everything.
+          if grep -qE '^\.github/workflows/' <<< "$files"; then all=true; fi
+          match() {
+            if [ "$all" = true ] || grep -qE "$1" <<< "$files"; then echo true; else echo false; fi
+          }
+          rust=$(match '^(src/|tests/|include/|build\.rs$|Cargo\.(toml|lock)$|\.cargo/|rust-toolchain\.toml$)')
+          {
+            echo "rust=$rust"
+            echo "pawn=$(match '^(include/|examples/|benchmark/|\.github/scripts/)')"
+            echo "docs=$(match '^(docs/|zensical\.toml$|requirements-docs\.txt$|include/|scripts/gen_natives_page\.py$)')"
+            echo "audit=$(match '^Cargo\.lock$')"
+            if [ "$rust" = true ] || [ "$all" = true ]; then
+              echo codeql=true
+            else
+              echo codeql=false
+            fi
+          } | tee -a "$GITHUB_OUTPUT"
+
+  rust:
+    name: Rust
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    uses: ./.github/workflows/rust.yml
+
+  # The SA-MP and open.mp compilers read `.inc` / `.pwn` files as bytes, not as
+  # UTF-8, so a stray accented character or typographic dash reaches the server
+  # as mojibake instead of failing at compile time. Covers the includes and
+  # everything under `examples/` and `benchmark/`.
+  pawn:
+    name: Pawn sources are pure ASCII
+    needs: changes
+    if: needs.changes.outputs.pawn == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: python3 .github/scripts/check_pawn_encoding.py --github
+
+  docs:
+    name: Docs
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/docs.yml
+
+  audit:
+    name: Audit
+    needs: changes
+    if: needs.changes.outputs.audit == 'true'
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      checks: write
+    uses: ./.github/workflows/audit.yml
+
+  codeql:
+    name: CodeQL
+    needs: changes
+    if: needs.changes.outputs.codeql == 'true'
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    uses: ./.github/workflows/codeql.yml
+
+  result:
+    name: CI
+    needs: [changes, rust, pawn, docs, audit, codeql]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every selected check to pass
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "$RESULTS"
+          if jq -e 'any(.[]; . == "failure" or . == "cancelled")' <<< "$RESULTS" > /dev/null; then
+            echo '::error::A selected check failed or was cancelled.'
+            exit 1
+          fi

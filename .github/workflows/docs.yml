@@ -1,84 +1,57 @@
 name: Docs
 
+# Reusable: called by ci.yml when documentation inputs change. Publishes to
+# GitHub Pages only for pushes to master (or a manual run on master).
+# docs/api-reference.md is generated from the includes on every build and is
+# never committed, so it cannot go stale.
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'docs/**'
-      - 'mkdocs.yml'
-      - 'docs/requirements.txt'
-      - 'docs/requirements.in'
-      - '.github/workflows/docs.yml'
-  pull_request:
-    paths:
-      - 'docs/**'
-      - 'mkdocs.yml'
-      - 'docs/requirements.txt'
-      - 'docs/requirements.in'
-      - '.github/workflows/docs.yml'
+  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Only one Pages deployment can run at a time. Cancelling a queued
-# deployment in favour of a newer one is fine; cancelling one already
-# in flight would orphan a partial deploy, so we let it finish.
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   build:
-    name: Build site
+    name: Build documentation
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          python-version: '3.x'
-          cache: pip
-          cache-dependency-path: docs/requirements.txt
-
-      - name: Install MkDocs and theme
-        run: pip install --require-hashes -r docs/requirements.txt
-
-      - name: Check the natives page generator
+          version: '0.13.7'
+      - name: Generate the natives page
         run: |
           python3 scripts/gen_natives_page.py --selftest
           python3 scripts/gen_natives_page.py --check
-
-      - name: Strict build (fails on warnings)
-        run: mkdocs build --strict
-
-      # Upload the generated site so the deploy job (or anyone debugging
-      # a PR) can grab it. Uses the dedicated Pages artifact format.
-      - name: Upload Pages artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+          python3 scripts/gen_natives_page.py
+      - name: Build without warnings
+        run: uv tool run --python 3.13 --from "$(cat requirements-docs.txt)" zensical build --strict --config-file zensical.toml
+      - name: Prepare GitHub Pages artifact
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: site
+          path: site/
 
   deploy:
-    name: Deploy to GitHub Pages
+    name: Publish documentation
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    # `actions/deploy-pages` needs `pages: write` to publish and
-    # `id-token: write` for OIDC verification of the artifact.
+    timeout-minutes: 10
     permissions:
       pages: write
       id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

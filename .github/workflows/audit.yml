@@ -1,0 +1,33 @@
+name: Dependency audit
+
+# Reusable: called by ci.yml when Cargo.lock changes. Also weekly, because an
+# advisory RustSec publishes (and the GitHub Advisory Database may not carry,
+# as with RUSTSEC-2026-0285) arrives on its own clock: on a schedule,
+# rustsec/audit-check opens an issue instead of turning an unrelated pull
+# request red. Mondays, a few hours before Dependabot's weekly run.
+on:
+  workflow_call:
+  schedule:
+    - cron: '41 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      checks: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

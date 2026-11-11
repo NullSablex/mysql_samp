@@ -1,25 +1,8 @@
 name: Rust
 
+# Reusable: called by ci.yml when Rust sources, includes or Cargo inputs change.
 on:
-  push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
-  # Weekly, for the security audit only (the other jobs opt out below).
-  #
-  # The first line of defence is Dependabot: it now tracks transitive crates
-  # too, so a patched version lands as an ordinary lockfile pull request and
-  # gets audited on the way in. This job is the second line, for what that
-  # misses - an advisory RustSec publishes and the GitHub Advisory Database
-  # does not carry, which is exactly what RUSTSEC-2026-0285 was, or one with
-  # no fixed version to bump to. Waiting for someone to open a pull request
-  # is the wrong trigger for that: it turns an unrelated PR red instead of
-  # telling us. On a schedule, rustsec/audit-check opens an issue instead.
-  #
-  # Mondays, a few hours before Dependabot's weekly run, so the two do not
-  # report the same thing twice.
-  schedule:
-    - cron: '41 5 * * 1'
+  workflow_call:
   workflow_dispatch:
 
 env:
@@ -32,8 +15,6 @@ permissions:
 jobs:
   build:
     name: Build, test, clippy
-    # The daily run exists for the audit; there is no new code to build.
-    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -67,8 +48,6 @@ jobs:
 
   fmt:
     name: Rustfmt
-    # The daily run exists for the audit; there is no new code to build.
-    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -83,32 +62,8 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all -- --check
 
-  audit:
-    name: Security audit
-    runs-on: ubuntu-latest
-    # rustsec/audit-check opens issues for new advisories and posts review
-    # comments on PRs that introduce vulnerable dependencies. This is the only
-    # job that also runs on the daily schedule: an advisory published against a
-    # crate already in Cargo.lock arrives on the RustSec database's clock, not
-    # on ours, and should reach us as an issue rather than as a red check on
-    # whatever pull request happened to be open at the time.
-    permissions:
-      contents: read
-      issues: write
-      pull-requests: write
-      checks: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
   coverage:
     name: Coverage (llvm-cov)
-    # The daily run exists for the audit; there is no new code to build.
-    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     permissions:
       contents: read

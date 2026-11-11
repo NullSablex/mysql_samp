@@ -15,7 +15,7 @@
 //!
 //! **Scope is deliberately the three includes and nothing else.** The
 //! `examples/` and `benchmark/` files are checked by the CI job instead
-//! (`.github/workflows/encoding.yml` → `.github/scripts/check_pawn_encoding.py`,
+//! (`.github/workflows/ci.yml` → `.github/scripts/check_pawn_encoding.py`,
 //! which covers those *and* these), so editing an example never depends on the
 //! Rust suite — it is not build input, and a doc-only change has no business
 //! failing a test binary. The CI script is the superset; keep a rule added here

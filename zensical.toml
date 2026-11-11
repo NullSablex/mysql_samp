@@ -1,0 +1,100 @@
+# docs/api-reference.md is generated from the includes and not committed:
+# run `python3 scripts/gen_natives_page.py` before building or serving.
+[project]
+site_name = "mysql_samp"
+site_url = "https://nullsablex.github.io/mysql_samp/"
+site_description = "MySQL plugin for SA-MP and Open Multiplayer, written in Rust"
+site_author = "NullSablex"
+repo_name = "NullSablex/mysql_samp"
+repo_url = "https://github.com/NullSablex/mysql_samp"
+edit_uri = "edit/master/docs/"
+docs_dir = "docs"
+site_dir = "site"
+nav = [
+  { "Home" = "index.md" },
+  { "Guide" = [
+    { "Installation" = "installation.md" },
+    { "Connection" = "connection.md" },
+    { "Options" = "options.md" },
+    { "Queries" = "queries.md" },
+    { "Cache" = "cache.md" },
+    { "ORM" = "orm.md" },
+    { "Errors" = "errors.md" },
+    { "Security" = "security.md" },
+  ] },
+  { "Migration" = [
+    { "Migration guide" = "migration.md" },
+    { "What changed" = "migration-changes.md" },
+    { "Examples" = "migration-examples.md" },
+  ] },
+  { "Reference" = [
+    { "API reference" = "api-reference.md" },
+    { "Benchmark" = "benchmark.md" },
+  ] },
+]
+
+[project.theme]
+language = "en"
+# A database icon in the header and the browser tab - this documents a MySQL plugin.
+favicon = "assets/favicon.svg"
+features = [
+  "navigation.tabs",
+  "navigation.tabs.sticky",
+  "navigation.sections",
+  "navigation.expand",
+  "navigation.top",
+  "navigation.tracking",
+  "navigation.indexes",
+  "toc.follow",
+  "search.suggest",
+  "search.highlight",
+  "search.share",
+  "content.code.copy",
+  "content.code.annotate",
+  "content.tabs.link",
+  "content.action.edit",
+]
+
+[project.theme.icon]
+logo = "lucide/database"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "deep orange"
+accent = "orange"
+toggle.icon = "lucide/moon"
+toggle.name = "Dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "deep orange"
+accent = "orange"
+toggle.icon = "lucide/sun"
+toggle.name = "Light mode"
+
+[project.markdown_extensions.admonition]
+[project.markdown_extensions.attr_list]
+[project.markdown_extensions.def_list]
+[project.markdown_extensions.footnotes]
+[project.markdown_extensions.md_in_html]
+[project.markdown_extensions.tables]
+[project.markdown_extensions.toc]
+permalink = true
+permalink_title = "Permanent link"
+[project.markdown_extensions.pymdownx.details]
+[project.markdown_extensions.pymdownx.highlight]
+anchor_linenums = true
+line_spans = "__span"
+pygments_lang_class = true
+[project.markdown_extensions.pymdownx.inlinehilite]
+[project.markdown_extensions.pymdownx.snippets]
+[project.markdown_extensions.pymdownx.superfences]
+[project.markdown_extensions.pymdownx.tabbed]
+alternate_style = true
+[project.markdown_extensions.pymdownx.tasklist]
+custom_checkbox = true
+[project.markdown_extensions.pymdownx.emoji]
+emoji_index = "zensical.extensions.emoji.twemoji"
+emoji_generator = "zensical.extensions.emoji.to_svg"

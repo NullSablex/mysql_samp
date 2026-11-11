@@ -5,7 +5,7 @@ Every query in mysql_samp is **non-blocking by default**: the statement runs on 
 Two things do block, and both are deliberate and named:
 
 - [`mysql_connect`](connection.md#mysql_connect) waits for the handshake, which is why it belongs in `OnGameModeInit` and not in a player callback.
-- A call that is given [`MYSQL_SYNC`](#mysql_sync--making-one-call-block-on-purpose) in place of a callback name blocks on purpose, for the cases where waiting is worth more than the tick — schema at start-up, a migration, a one-off command.
+- A call that is given [`MYSQL_SYNC`](#mysql_sync-making-one-call-block-on-purpose) in place of a callback name blocks on purpose, for the cases where waiting is worth more than the tick — schema at start-up, a migration, a one-off command.
 
 Nothing blocks unless you wrote one of those two, and the second one says so at the call site.
 
