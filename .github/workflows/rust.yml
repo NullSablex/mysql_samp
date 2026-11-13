@@ -23,12 +23,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Rust (stable + clippy)
-        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
-        with:
-          toolchain: stable
-          targets: i686-unknown-linux-gnu
-          components: clippy
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install
+          rustup target add i686-unknown-linux-gnu
 
       - name: Install cross-compilation tools
         run: |
@@ -55,11 +53,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install Rust (stable + rustfmt)
-        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
-        with:
-          toolchain: stable
-          components: rustfmt
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install
       - run: cargo fmt --all -- --check
 
   coverage:
@@ -72,12 +67,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Rust (stable + llvm-tools)
-        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
-        with:
-          toolchain: stable
-          targets: i686-unknown-linux-gnu
-          components: llvm-tools-preview
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install
+          rustup target add i686-unknown-linux-gnu
+          rustup component add llvm-tools-preview
 
       - name: Install cross-compilation tools
         run: |

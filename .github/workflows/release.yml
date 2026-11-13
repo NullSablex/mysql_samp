@@ -38,11 +38,10 @@ jobs:
             exit 1
           fi
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
-        with:
-          toolchain: stable
-          targets: i686-unknown-linux-gnu,i686-pc-windows-msvc
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install
+          rustup target add i686-unknown-linux-gnu i686-pc-windows-msvc
 
       - name: Install cross-compilation tools
         run: |
